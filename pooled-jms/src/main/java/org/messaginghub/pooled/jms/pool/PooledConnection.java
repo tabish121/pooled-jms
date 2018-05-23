@@ -56,8 +56,8 @@ public class PooledConnection implements ExceptionListener {
     private long lastUsed = System.currentTimeMillis();
     private final long firstUsed = lastUsed;
     private boolean hasExpired;
-    private int idleTimeout = 30 * 1000;
-    private long expiryTimeout = 0l;
+    private int keepAliveTime = 30 * 1000;
+    private long connectionAgeLimit = 0l;
     private boolean useAnonymousProducers = true;
     private int explicitProducerCacheSize = 0;
     private int jmsMajorVersion = 1;
@@ -66,7 +66,6 @@ public class PooledConnection implements ExceptionListener {
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final GenericKeyedObjectPool<PooledSessionKey, PooledSessionHolder> sessionPool;
     private final List<JmsPoolSession> loanedSessions = new CopyOnWriteArrayList<JmsPoolSession>();
-    private boolean reconnectOnException;
     private ExceptionListener parentExceptionListener;
 
     public PooledConnection(Connection connection) {
@@ -115,7 +114,7 @@ public class PooledConnection implements ExceptionListener {
         );
     }
 
-    // useful when external failure needs to force expiry
+    // useful when external failure needs to force expiration
     public void setHasExpired(boolean val) {
         hasExpired = val;
     }
@@ -135,12 +134,10 @@ public class PooledConnection implements ExceptionListener {
         if (started.compareAndSet(false, true)) {
             try {
                 connection.start();
-            } catch (JMSException e) {
+            } catch (Throwable error) {
                 started.set(false);
-                if (isReconnectOnException()) {
-                    close();
-                }
-                throw(e);
+                close();
+                throw error;
             }
         }
     }
@@ -245,7 +242,7 @@ public class PooledConnection implements ExceptionListener {
             }
         }
 
-        if (expiryTimeout > 0 && (firstUsed + expiryTimeout) - System.currentTimeMillis() < 0) {
+        if (connectionAgeLimit > 0 && (firstUsed + connectionAgeLimit) - System.currentTimeMillis() < 0) {
             hasExpired = true;
             if (referenceCount == 0) {
                 close();
@@ -255,7 +252,7 @@ public class PooledConnection implements ExceptionListener {
 
         // Only set hasExpired here is no references, as a Connection with references is by
         // definition not idle at this time.
-        if (referenceCount == 0 && idleTimeout > 0 && (lastUsed + idleTimeout) - System.currentTimeMillis() < 0) {
+        if (referenceCount == 0 && keepAliveTime > 0 && (lastUsed + keepAliveTime) - System.currentTimeMillis() < 0) {
             hasExpired = true;
             close();
             expired = true;
@@ -264,28 +261,28 @@ public class PooledConnection implements ExceptionListener {
         return expired;
     }
 
-    public int getIdleTimeout() {
-        return idleTimeout;
+    public int getKeepAliveTime() {
+        return keepAliveTime;
     }
 
-    public void setIdleTimeout(int idleTimeout) {
-        this.idleTimeout = idleTimeout;
+    public void setKeepAliveTime(int keepAliveTime) {
+        this.keepAliveTime = keepAliveTime;
     }
 
-    public void setExpiryTimeout(long expiryTimeout) {
-        this.expiryTimeout = expiryTimeout;
+    public void setConnectionAgeLimit(long connectionAgeLimit) {
+        this.connectionAgeLimit = connectionAgeLimit;
     }
 
-    public long getExpiryTimeout() {
-        return expiryTimeout;
+    public long getConnectionAgeLimit() {
+        return connectionAgeLimit;
     }
 
-    public int getMaximumActiveSessionPerConnection() {
+    public int getMaxActiveSessionsPerConnection() {
         return this.sessionPool.getMaxTotalPerKey();
     }
 
-    public void setMaximumActiveSessionPerConnection(int maximumActiveSessionPerConnection) {
-        this.sessionPool.setMaxTotalPerKey(maximumActiveSessionPerConnection);
+    public void setMaxActiveSessionsPerConnection(int maActiveSessionsPerConnection) {
+        this.sessionPool.setMaxTotalPerKey(maActiveSessionsPerConnection);
     }
 
     public boolean isUseAnonymousProducers() {
@@ -371,23 +368,6 @@ public class PooledConnection implements ExceptionListener {
     }
 
     /**
-     * @return true if the underlying connection will be renewed on JMSException, false otherwise
-     */
-    public boolean isReconnectOnException() {
-        return reconnectOnException;
-    }
-
-    /**
-     * Controls weather the underlying connection should be reset (and renewed) on JMSException
-     *
-     * @param reconnectOnException
-     *          Boolean value that configures whether reconnect on exception should happen
-     */
-    public void setReconnectOnException(boolean reconnectOnException) {
-        this.reconnectOnException = reconnectOnException;
-    }
-
-    /**
      * Checks for JMS version support in the underlying JMS Connection this pooled connection
      * wrapper encapsulates.
      *
@@ -416,9 +396,9 @@ public class PooledConnection implements ExceptionListener {
 
     @Override
     public void onException(JMSException exception) {
-        if (isReconnectOnException()) {
-            close();
-        }
+        // Closes the underlying connection and removes it from the pool
+        close();
+
         if (parentExceptionListener != null) {
             parentExceptionListener.onException(exception);
         }

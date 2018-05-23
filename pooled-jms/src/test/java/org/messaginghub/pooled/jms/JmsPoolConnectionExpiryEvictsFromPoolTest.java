@@ -32,7 +32,7 @@ public class JmsPoolConnectionExpiryEvictsFromPoolTest extends JmsPoolTestSuppor
 
     @Test(timeout = 60000)
     public void testEvictionOfIdle() throws Exception {
-        cf.setIdleTimeout(10);
+        cf.setKeepAliveTime(10);
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
         Connection amq1 = connection.getConnection();
 
@@ -48,7 +48,7 @@ public class JmsPoolConnectionExpiryEvictsFromPoolTest extends JmsPoolTestSuppor
 
     @Test(timeout = 60000)
     public void testEvictionOfExpired() throws Exception {
-        cf.setExpiryTimeout(10);
+        cf.setConnectionAgeLimit(10);
         Connection connection = cf.createConnection();
         Connection amq1 = ((JmsPoolConnection) connection).getConnection();
 
@@ -63,7 +63,7 @@ public class JmsPoolConnectionExpiryEvictsFromPoolTest extends JmsPoolTestSuppor
 
     @Test(timeout = 60000)
     public void testNotIdledWhenInUse() throws Exception {
-        cf.setIdleTimeout(10);
+        cf.setKeepAliveTime(10);
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
         Session s = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 

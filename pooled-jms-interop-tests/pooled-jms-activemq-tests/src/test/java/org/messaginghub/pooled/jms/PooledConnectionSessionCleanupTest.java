@@ -65,7 +65,7 @@ public class PooledConnectionSessionCleanupTest extends ActiveMQJmsPoolTestSuppo
         directConnFact = amqFactory;
         pooledConnFact = new JmsPoolConnectionFactory();
         pooledConnFact.setConnectionFactory(directConnFact);
-        pooledConnFact.setIdleTimeout((int)TimeUnit.MINUTES.toMillis(60));
+        pooledConnFact.setKeepAliveTime((int)TimeUnit.MINUTES.toMillis(60));
         pooledConnFact.setMaxConnections(1);
 
         // Prepare the connections

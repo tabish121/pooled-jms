@@ -40,7 +40,7 @@ public class PooledConnectionExpiredConnectionsUnderLoad extends ActiveMQJmsPool
 
         try {
             pooled.setMaxConnections(2);
-            pooled.setExpiryTimeout(1L);
+            pooled.setConnectionAgeLimit(1L);
             Thread[] threads = new Thread[5];
             for (int i = 0; i < threads.length; i++) {
                 threads[i] = new Thread(new Runnable() {
