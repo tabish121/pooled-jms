@@ -86,7 +86,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     protected boolean jmsContextSupported;
 
     private int maxActiveSessionsPerConnection = 500;
-    private int keepAliveTime = 30 * 1000;
+    private int connectionKeepAliveTime = 30 * 1000;
     private boolean blockIfSessionPoolIsFull = true;
     private long blockIfSessionPoolIsFullTimeout = -1L;
     private long connectionAgeLimit = 0l;
@@ -108,11 +108,11 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
                         Connection delegate = createProviderConnection(connectionKey);
 
                         PooledConnection connection = createPooledConnection(delegate);
-                        connection.setKeepAliveTime(getKeepAliveTime());
+                        connection.setKeepAliveTime(getConnectionKeepAliveTime());
                         connection.setConnectionAgeLimit(getConnectionAgeLimit());
                         connection.setMaxActiveSessionsPerConnection(getMaxActiveSessionsPerConnection());
-                        connection.setBlockIfSessionPoolIsFull(isBlockIfSessionPoolIsFull());
-                        if (isBlockIfSessionPoolIsFull() && getBlockIfSessionPoolIsFullTimeout() > 0) {
+                        connection.setBlockIfSessionPoolIsFull(getBlockIfSessionPoolIsFull());
+                        if (getBlockIfSessionPoolIsFull() && getBlockIfSessionPoolIsFullTimeout() > 0) {
                             connection.setBlockIfSessionPoolIsFullTimeout(getBlockIfSessionPoolIsFullTimeout());
                         }
                         connection.setUseAnonymousProducers(isUseAnonymousProducers());
@@ -379,7 +379,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *
      * @see #setBlockIfSessionPoolIsFull(boolean)
      */
-    public boolean isBlockIfSessionPoolIsFull() {
+    public boolean getBlockIfSessionPoolIsFull() {
         return this.blockIfSessionPoolIsFull;
     }
 
@@ -416,8 +416,8 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *
      * @return keep alive time value (milliseconds)
      */
-    public int getKeepAliveTime() {
-        return keepAliveTime;
+    public int getConnectionKeepAliveTime() {
+        return connectionKeepAliveTime;
     }
 
     /**
@@ -432,11 +432,11 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * to a non-zero value and the pool will actively check for idle connections that have exceeded their
      * keep alive time.
      *
-     * @param idleTimeout
+     * @param connectionKeepAliveTime
      *      The maximum time a pooled Connection can sit unused before it is eligible for removal.
      */
-    public void setKeepAliveTime(int idleTimeout) {
-        this.keepAliveTime = idleTimeout;
+    public void setConnectionKeepAliveTime(int connectionKeepAliveTime) {
+        this.connectionKeepAliveTime = connectionKeepAliveTime;
     }
 
     /**
@@ -769,11 +769,11 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     protected void populateProperties(Properties props) {
         props.setProperty("maxActiveSessionsPerConnection", Integer.toString(getMaxActiveSessionsPerConnection()));
         props.setProperty("maxConnections", Integer.toString(getMaxConnections()));
-        props.setProperty("keepAliveTime", Integer.toString(getKeepAliveTime()));
+        props.setProperty("keepAliveTime", Integer.toString(getConnectionKeepAliveTime()));
         props.setProperty("connectionAgeLimit", Long.toString(getConnectionAgeLimit()));
         props.setProperty("keepAliveCheckInterval", Long.toString(getKeepAliveCheckInterval()));
         props.setProperty("useAnonymousProducers", Boolean.toString(isUseAnonymousProducers()));
-        props.setProperty("blockIfSessionPoolIsFull", Boolean.toString(isBlockIfSessionPoolIsFull()));
+        props.setProperty("blockIfSessionPoolIsFull", Boolean.toString(getBlockIfSessionPoolIsFull()));
         props.setProperty("blockIfSessionPoolIsFullTimeout", Long.toString(getBlockIfSessionPoolIsFullTimeout()));
         props.setProperty("useProviderJMSContext", Boolean.toString(isUseProviderJMSContext()));
     }
