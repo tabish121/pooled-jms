@@ -56,7 +56,7 @@ public class PooledConnectionExpiryEvictsFromPoolTest extends ActiveMQJmsPoolTes
 
     @Test(timeout = 60000)
     public void testEvictionOfIdle() throws Exception {
-        pooledFactory.setConnectionKeepAliveTime(10);
+        pooledFactory.setConnectionIdleTimeout(10);
         JmsPoolConnection connection = (JmsPoolConnection) pooledFactory.createConnection();
         Connection amq1 = connection.getConnection();
 
@@ -87,7 +87,7 @@ public class PooledConnectionExpiryEvictsFromPoolTest extends ActiveMQJmsPoolTes
 
     @Test(timeout = 60000)
     public void testNotIdledWhenInUse() throws Exception {
-        pooledFactory.setConnectionKeepAliveTime(10);
+        pooledFactory.setConnectionIdleTimeout(10);
         JmsPoolConnection connection = (JmsPoolConnection) pooledFactory.createConnection();
         Session s = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 

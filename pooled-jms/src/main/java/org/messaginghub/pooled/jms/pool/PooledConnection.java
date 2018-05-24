@@ -56,7 +56,7 @@ public class PooledConnection implements ExceptionListener {
     private long lastUsed = System.currentTimeMillis();
     private final long firstUsed = lastUsed;
     private boolean hasExpired;
-    private int keepAliveTime = 30 * 1000;
+    private int idleTimeout = 30 * 1000;
     private long connectionAgeLimit = 0l;
     private boolean useAnonymousProducers = true;
     private int explicitProducerCacheSize = 0;
@@ -252,7 +252,7 @@ public class PooledConnection implements ExceptionListener {
 
         // Only set hasExpired here is no references, as a Connection with references is by
         // definition not idle at this time.
-        if (referenceCount == 0 && keepAliveTime > 0 && (lastUsed + keepAliveTime) - System.currentTimeMillis() < 0) {
+        if (referenceCount == 0 && idleTimeout > 0 && (lastUsed + idleTimeout) - System.currentTimeMillis() < 0) {
             hasExpired = true;
             close();
             expired = true;
@@ -261,15 +261,15 @@ public class PooledConnection implements ExceptionListener {
         return expired;
     }
 
-    public int getKeepAliveTime() {
-        return keepAliveTime;
+    public int getIdleTimeout() {
+        return idleTimeout;
     }
 
-    public void setKeepAliveTime(int keepAliveTime) {
-        this.keepAliveTime = keepAliveTime;
+    public void setIdleTimeout(int idleTimeout) {
+        this.idleTimeout = idleTimeout;
     }
 
-    public void setConnectionAgeLimit(long connectionAgeLimit) {
+    public void setAgeLimit(long connectionAgeLimit) {
         this.connectionAgeLimit = connectionAgeLimit;
     }
 
@@ -281,7 +281,7 @@ public class PooledConnection implements ExceptionListener {
         return this.sessionPool.getMaxTotalPerKey();
     }
 
-    public void setMaxActiveSessionsPerConnection(int maActiveSessionsPerConnection) {
+    public void setMaxSessionsPerConnection(int maActiveSessionsPerConnection) {
         this.sessionPool.setMaxTotalPerKey(maActiveSessionsPerConnection);
     }
 
