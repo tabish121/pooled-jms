@@ -26,7 +26,6 @@ import javax.jms.Connection;
 import javax.jms.Session;
 
 import org.junit.Test;
-import org.messaginghub.pooled.jms.JmsPoolConnection;
 
 public class JmsPoolConnectionExpiryEvictsFromPoolTest extends JmsPoolTestSupport {
 
@@ -43,21 +42,6 @@ public class JmsPoolConnectionExpiryEvictsFromPoolTest extends JmsPoolTestSuppor
 
         JmsPoolConnection connection2 = (JmsPoolConnection) cf.createConnection();
         Connection amq2 = connection2.getConnection();
-        assertTrue("not equal", !amq1.equals(amq2));
-    }
-
-    @Test(timeout = 60000)
-    public void testEvictionOfExpired() throws Exception {
-        cf.setConnectionAgeLimit(10);
-        Connection connection = cf.createConnection();
-        Connection amq1 = ((JmsPoolConnection) connection).getConnection();
-
-        // let it expire while in use
-        TimeUnit.MILLISECONDS.sleep(20);
-        connection.close();
-
-        Connection connection2 = cf.createConnection();
-        Connection amq2 = ((JmsPoolConnection) connection2).getConnection();
         assertTrue("not equal", !amq1.equals(amq2));
     }
 

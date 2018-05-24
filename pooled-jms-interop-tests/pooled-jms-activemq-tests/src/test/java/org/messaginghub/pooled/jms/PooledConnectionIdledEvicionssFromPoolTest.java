@@ -29,7 +29,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-public class PooledConnectionExpiryEvictsFromPoolTest extends ActiveMQJmsPoolTestSupport {
+public class PooledConnectionIdledEvicionssFromPoolTest extends ActiveMQJmsPoolTestSupport {
 
     private JmsPoolConnectionFactory pooledFactory;
 
@@ -67,21 +67,6 @@ public class PooledConnectionExpiryEvictsFromPoolTest extends ActiveMQJmsPoolTes
 
         JmsPoolConnection connection2 = (JmsPoolConnection) pooledFactory.createConnection();
         Connection amq2 = connection2.getConnection();
-        assertTrue("not equal", !amq1.equals(amq2));
-    }
-
-    @Test(timeout = 60000)
-    public void testEvictionOfExpired() throws Exception {
-        pooledFactory.setConnectionAgeLimit(10);
-        Connection connection = pooledFactory.createConnection();
-        Connection amq1 = ((JmsPoolConnection) connection).getConnection();
-
-        // let it expire while in use
-        TimeUnit.MILLISECONDS.sleep(20);
-        connection.close();
-
-        Connection connection2 = pooledFactory.createConnection();
-        Connection amq2 = ((JmsPoolConnection) connection2).getConnection();
         assertTrue("not equal", !amq1.equals(amq2));
     }
 

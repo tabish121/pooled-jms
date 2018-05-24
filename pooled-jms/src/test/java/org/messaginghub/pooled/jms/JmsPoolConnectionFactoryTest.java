@@ -66,9 +66,9 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
     @Test(timeout = 60000)
     public void testSetTimeBetweenExpirationCheckMillis() throws  Exception {
         cf = new JmsPoolConnectionFactory();
-        assertEquals(-1, cf.getKeepAliveCheckInterval());
-        cf.setKeepAliveCheckInterval(5000);
-        assertEquals(5000, cf.getKeepAliveCheckInterval());
+        assertEquals(-1, cf.getConnectionCheckInterval());
+        cf.setConnectionCheckInterval(5000);
+        assertEquals(5000, cf.getConnectionCheckInterval());
     }
 
     @Test(timeout = 60000)

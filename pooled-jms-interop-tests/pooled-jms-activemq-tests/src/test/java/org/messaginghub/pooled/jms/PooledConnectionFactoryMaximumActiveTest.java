@@ -67,7 +67,7 @@ public class PooledConnectionFactoryMaximumActiveTest extends ActiveMQJmsPoolTes
 
         try {
             cf.setMaxConnections(3);
-            cf.setMaxActiveSessionsPerConnection(1);
+            cf.setMaxSessionsPerConnection(1);
             cf.setBlockIfSessionPoolIsFull(true);
             connection = cf.createConnection();
 
@@ -120,7 +120,7 @@ public class PooledConnectionFactoryMaximumActiveTest extends ActiveMQJmsPoolTes
 
         try {
             cf.setMaxConnections(3);
-            cf.setMaxActiveSessionsPerConnection(1);
+            cf.setMaxSessionsPerConnection(1);
             cf.setBlockIfSessionPoolIsFull(true);
             connection = cf.createConnection();
 
