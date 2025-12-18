@@ -474,7 +474,7 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
     public void addSessionEventListener(JmsPoolSessionEventListener listener) throws JMSException {
         checkClosed();
         if (!sessionEventListeners.contains(listener)) {
-            this.sessionEventListeners.add(listener);
+            sessionEventListeners.add(listener);
         }
     }
 
