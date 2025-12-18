@@ -326,14 +326,14 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
      * @return is this {@link MessageProducer} wrapper an anonymous variant.
      */
     public boolean isAnonymousProducer() {
-        return this.anonymousProducer;
+        return anonymousProducer;
     }
 
     /**
      * @return the reference counter used to manage this wrapper's lifetime.
      */
     public AtomicInteger getRefCount() {
-        return this.refCount;
+        return refCount;
     }
 
     /**

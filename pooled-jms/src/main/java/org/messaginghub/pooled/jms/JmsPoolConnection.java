@@ -16,9 +16,13 @@
  */
 package org.messaginghub.pooled.jms;
 
+import java.lang.invoke.MethodHandles;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import jakarta.jms.Connection;
 import jakarta.jms.ConnectionConsumer;
@@ -38,10 +42,6 @@ import jakarta.jms.Topic;
 import jakarta.jms.TopicConnection;
 import jakarta.jms.TopicSession;
 
-import org.messaginghub.pooled.jms.pool.PooledConnection;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
  * Represents a proxy {@link Connection} which is-a {@link TopicConnection} and
  * {@link QueueConnection} which is pooled and on {@link #close()} will return
@@ -52,9 +52,9 @@ import org.slf4j.LoggerFactory;
  */
 public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsPoolSessionEventListener, AutoCloseable {
 
-    private static final Logger LOG = LoggerFactory.getLogger(JmsPoolConnection.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    protected PooledConnection connection;
+    protected JmsPoolConnectionHolder connection;
 
     private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -70,18 +70,18 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
      * @param pool
      *      The connection and pool manager backing this proxy connection object.
      */
-    public JmsPoolConnection(PooledConnection pool) {
+    public JmsPoolConnection(JmsPoolConnectionHolder pool) {
         this.connection = pool;
     }
 
     @Override
     public void close() throws JMSException {
         if (closed.compareAndSet(false, true)) {
-            this.cleanupAllLoanedSessions();
-            this.cleanupConnectionTemporaryDestinations();
-            if (this.connection != null) {
-                this.connection.decrementReferenceCount();
-                this.connection = null;
+            cleanupAllLoanedSessions();
+            cleanupConnectionTemporaryDestinations();
+            if (connection != null) {
+                connection.decrementReferenceCount();
+                connection = null;
             }
         }
     }
@@ -124,7 +124,7 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
         // ignore repeated calls to setClientID() with the same client id
         // this could happen when a JMS component such as Spring that uses a
         // Pooled JMS ConnectionFactory when it shuts down and reinitializes.
-        if (this.getConnection().getClientID() == null || !this.getClientID().equals(clientID)) {
+        if (getConnection().getClientID() == null || !getClientID().equals(clientID)) {
             getConnection().setClientID(clientID);
         }
     }
@@ -234,7 +234,7 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
      * Remove all of the temporary destinations created for this connection.
      * This is important since the underlying connection may be reused over a
      * long period of time, accumulating all of the temporary destinations from
-     * each use. However, from the perspective of the lifecycle from the
+     * each use. However, from the perspective of the life-cycle from the
      * client's view, close() closes the connection and, therefore, deletes all
      * of the temporary destinations created.
      */
@@ -283,7 +283,7 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
      */
     public int getNumSessions() throws JMSException {
         checkClosed();
-        return this.connection.getNumSessions();
+        return connection.getNumSessions();
     }
 
     /**
@@ -293,7 +293,7 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
      */
     public int getNumActiveSessions() throws JMSException {
         checkClosed();
-        return this.connection.getNumActiveSessions();
+        return connection.getNumActiveSessions();
     }
 
     /**
@@ -303,7 +303,7 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
      */
     public int getNumtIdleSessions() throws JMSException {
         checkClosed();
-        return this.connection.getNumIdleSessions();
+        return connection.getNumIdleSessions();
     }
 
     //----- Internal support methods -----------------------------------------//

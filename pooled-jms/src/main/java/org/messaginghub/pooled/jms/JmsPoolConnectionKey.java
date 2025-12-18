@@ -14,16 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.messaginghub.pooled.jms.pool;
+package org.messaginghub.pooled.jms;
 
 /**
  * A cache key for the connection details
  */
-public final class PooledConnectionKey {
+public final class JmsPoolConnectionKey {
 
     private final String userName;
     private final String password;
-    private int hash;
+    private final int hashCode;
 
     /**
      * Creates a new ConnectionKey using the supplied values.
@@ -33,17 +33,10 @@ public final class PooledConnectionKey {
      * @param password
      * 		The password that this key represents
      */
-    public PooledConnectionKey(String userName, String password) {
+    public JmsPoolConnectionKey(String userName, String password) {
         this.password = password;
         this.userName = userName;
-        hash = 31;
-        if (userName != null) {
-            hash += userName.hashCode();
-        }
-        hash *= 31;
-        if (password != null) {
-            hash += password.hashCode();
-        }
+        this.hashCode = computeHash(userName, password);
     }
 
     public String getPassword() {
@@ -58,7 +51,6 @@ public final class PooledConnectionKey {
     public int hashCode() {
         final int prime = 31;
         int result = 1;
-        result = prime * result + hash;
         result = prime * result + ((password == null) ? 0 : password.hashCode());
         result = prime * result + ((userName == null) ? 0 : userName.hashCode());
         return result;
@@ -76,8 +68,9 @@ public final class PooledConnectionKey {
             return false;
         }
 
-        PooledConnectionKey other = (PooledConnectionKey) obj;
-        if (hash != other.hash) {
+        final JmsPoolConnectionKey other = (JmsPoolConnectionKey) obj;
+
+        if (hashCode != other.hashCode) {
             return false;
         }
 
@@ -98,5 +91,18 @@ public final class PooledConnectionKey {
         }
 
         return true;
+    }
+
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + " { " + userName + " }";
+    }
+
+    private static int computeHash(String userName, String password) {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + ((password == null) ? 0 : password.hashCode());
+        result = prime * result + ((userName == null) ? 0 : userName.hashCode());
+        return result;
     }
 }

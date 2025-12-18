@@ -18,8 +18,6 @@ package org.messaginghub.pooled.jms;
 
 import jakarta.jms.Connection;
 
-import org.messaginghub.pooled.jms.pool.PooledJCAConnection;
-
 public class JmsPoolJcaConnectionFactory extends JmsPoolXAConnectionFactory {
 
     private static final long serialVersionUID = -2470093537159318333L;
@@ -35,7 +33,7 @@ public class JmsPoolJcaConnectionFactory extends JmsPoolXAConnectionFactory {
     }
 
     @Override
-    protected PooledJCAConnection createPooledConnection(Connection connection) {
-        return new PooledJCAConnection(connection, getTransactionManager(), getName());
+    protected JmsPoolJCAConnectionHolder createPooledConnection(Connection connection) {
+        return new JmsPoolJCAConnectionHolder(connection, getTransactionManager(), getName());
     }
 }
