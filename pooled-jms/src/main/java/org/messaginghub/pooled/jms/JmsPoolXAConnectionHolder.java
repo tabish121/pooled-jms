@@ -14,13 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.messaginghub.pooled.jms.pool;
+package org.messaginghub.pooled.jms;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.transaction.xa.XAResource;
-
-import org.messaginghub.pooled.jms.JmsPoolSession;
 
 import jakarta.jms.Connection;
 import jakarta.jms.JMSException;
@@ -36,17 +34,18 @@ import jakarta.transaction.TransactionManager;
  * is active, the session will automatically be enlisted in the current
  * transaction.
  */
-public class PooledXAConnection extends PooledConnection {
+public class JmsPoolXAConnectionHolder extends JmsPoolConnectionHolder {
 
     private final TransactionManager transactionManager;
 
-    public PooledXAConnection(Connection connection, TransactionManager transactionManager) {
+    public JmsPoolXAConnectionHolder(Connection connection, TransactionManager transactionManager) {
         super(connection);
+
         this.transactionManager = transactionManager;
     }
 
     @Override
-    protected Session makeSession(PooledSessionKey key) throws JMSException {
+    protected Session makeSession(JmsPoolSessionKey key) throws JMSException {
         return ((XAConnection) connection).createXASession();
     }
 

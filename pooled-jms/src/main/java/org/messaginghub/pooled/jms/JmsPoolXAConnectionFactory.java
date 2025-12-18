@@ -17,15 +17,10 @@
 package org.messaginghub.pooled.jms;
 
 import java.io.Serializable;
+import java.lang.invoke.MethodHandles;
 import java.util.Hashtable;
 import java.util.Map;
 
-import jakarta.jms.Connection;
-import jakarta.jms.JMSException;
-import jakarta.jms.XAConnection;
-import jakarta.jms.XAConnectionFactory;
-import jakarta.jms.XAJMSContext;
-import jakarta.transaction.TransactionManager;
 import javax.naming.Binding;
 import javax.naming.Context;
 import javax.naming.InitialContext;
@@ -33,11 +28,16 @@ import javax.naming.Name;
 import javax.naming.NamingEnumeration;
 import javax.naming.spi.ObjectFactory;
 
-import org.messaginghub.pooled.jms.pool.PooledConnectionKey;
-import org.messaginghub.pooled.jms.pool.PooledXAConnection;
 import org.messaginghub.pooled.jms.util.IntrospectionSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.XAConnection;
+import jakarta.jms.XAConnectionFactory;
+import jakarta.jms.XAJMSContext;
+import jakarta.transaction.TransactionManager;
 
 /**
  * A pooled connection factory that automatically enlists sessions in the
@@ -45,7 +45,7 @@ import org.slf4j.LoggerFactory;
  */
 public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory implements ObjectFactory, Serializable, XAConnectionFactory {
 
-    private static final transient Logger LOG = LoggerFactory.getLogger(JmsPoolXAConnectionFactory.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
     private static final long serialVersionUID = 7753681333583183646L;
 
     private TransactionManager transactionManager;
@@ -79,7 +79,7 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
     }
 
     @Override
-    protected XAConnection createProviderConnection(PooledConnectionKey key) throws JMSException {
+    protected XAConnection createProviderConnection(JmsPoolConnectionKey key) throws JMSException {
         if (connectionFactory instanceof XAConnectionFactory) {
             if (key.getUserName() == null && key.getPassword() == null) {
                 return ((XAConnectionFactory) connectionFactory).createXAConnection();
@@ -105,8 +105,8 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
     }
 
     @Override
-    protected PooledXAConnection createPooledConnection(Connection connection) {
-        return new PooledXAConnection(connection, getTransactionManager());
+    protected JmsPoolXAConnectionHolder createPooledConnection(Connection connection) {
+        return new JmsPoolXAConnectionHolder(connection, getTransactionManager());
     }
 
     @Override
@@ -170,12 +170,12 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
 
     @Override
     public XAConnection createXAConnection() throws JMSException {
-        return createProviderConnection(new PooledConnectionKey(null, null));
+        return createProviderConnection(new JmsPoolConnectionKey(null, null));
     }
 
     @Override
     public XAConnection createXAConnection(String userName, String password) throws JMSException {
-        return createProviderConnection(new PooledConnectionKey(userName, password));
+        return createProviderConnection(new JmsPoolConnectionKey(userName, password));
     }
 
     @Override

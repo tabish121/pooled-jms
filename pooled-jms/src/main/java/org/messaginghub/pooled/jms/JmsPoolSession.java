@@ -17,14 +17,13 @@
 package org.messaginghub.pooled.jms;
 
 import java.io.Serializable;
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.transaction.xa.XAResource;
 
 import org.apache.commons.pool2.KeyedObjectPool;
-import org.messaginghub.pooled.jms.pool.PooledSessionHolder;
-import org.messaginghub.pooled.jms.pool.PooledSessionKey;
 import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,22 +56,22 @@ import jakarta.jms.XASession;
 
 public class JmsPoolSession implements Session, TopicSession, QueueSession, XASession, AutoCloseable {
 
-    private static final transient Logger LOG = LoggerFactory.getLogger(JmsPoolSession.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final PooledSessionKey key;
-    private final KeyedObjectPool<PooledSessionKey, PooledSessionHolder> sessionPool;
+    private final JmsPoolSessionKey key;
+    private final KeyedObjectPool<JmsPoolSessionKey, JmsPoolSessionHolder> sessionPool;
     private final CopyOnWriteArrayList<JmsPoolMessageProducer> producers = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<JmsPoolMessageConsumer> consumers = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<JmsPoolQueueBrowser> browsers = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<JmsPoolSessionEventListener> sessionEventListeners = new CopyOnWriteArrayList<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    private PooledSessionHolder sessionHolder;
+    private JmsPoolSessionHolder sessionHolder;
     private boolean transactional = true;
     private boolean ignoreClose;
     private boolean isXa;
 
-    public JmsPoolSession(PooledSessionKey key, PooledSessionHolder sessionHolder, KeyedObjectPool<PooledSessionKey, PooledSessionHolder> sessionPool, boolean transactional) {
+    public JmsPoolSession(JmsPoolSessionKey key, JmsPoolSessionHolder sessionHolder, KeyedObjectPool<JmsPoolSessionKey, JmsPoolSessionHolder> sessionPool, boolean transactional) {
         this.key = key;
         this.sessionHolder = sessionHolder;
         this.sessionPool = sessionPool;
@@ -301,7 +300,7 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
 
     @Override
     public XAResource getXAResource() {
-        final PooledSessionHolder session;
+        final JmsPoolSessionHolder session;
         try {
             session = safeGetSessionHolder();
         } catch (JMSException e) {
@@ -334,7 +333,7 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
 
     @Override
     public void run() {
-        final PooledSessionHolder session;
+        final JmsPoolSessionHolder session;
         try {
             session = safeGetSessionHolder();
         } catch (JMSException e) {
@@ -407,42 +406,42 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
 
     @Override
     public MessageConsumer createSharedConsumer(Topic topic, String sharedSubscriptionName) throws JMSException {
-        PooledSessionHolder state = safeGetSessionHolder();
+        JmsPoolSessionHolder state = safeGetSessionHolder();
         state.getConnection().checkClientJMSVersionSupport(2, 0);
         return addConsumer(state.getSession().createSharedConsumer(topic, sharedSubscriptionName));
     }
 
     @Override
     public MessageConsumer createSharedConsumer(Topic topic, String sharedSubscriptionName, String messageSelector) throws JMSException {
-        PooledSessionHolder state = safeGetSessionHolder();
+        JmsPoolSessionHolder state = safeGetSessionHolder();
         state.getConnection().checkClientJMSVersionSupport(2, 0);
         return addConsumer(state.getSession().createSharedConsumer(topic, sharedSubscriptionName, messageSelector));
     }
 
     @Override
     public MessageConsumer createDurableConsumer(Topic topic, String name) throws JMSException {
-        PooledSessionHolder state = safeGetSessionHolder();
+        JmsPoolSessionHolder state = safeGetSessionHolder();
         state.getConnection().checkClientJMSVersionSupport(2, 0);
         return addConsumer(state.getSession().createDurableConsumer(topic, name));
     }
 
     @Override
     public MessageConsumer createDurableConsumer(Topic topic, String name, String messageSelector, boolean noLocal) throws JMSException {
-        PooledSessionHolder state = safeGetSessionHolder();
+        JmsPoolSessionHolder state = safeGetSessionHolder();
         state.getConnection().checkClientJMSVersionSupport(2, 0);
         return addConsumer(state.getSession().createDurableConsumer(topic, name, messageSelector, noLocal));
     }
 
     @Override
     public MessageConsumer createSharedDurableConsumer(Topic topic, String name) throws JMSException {
-        PooledSessionHolder state = safeGetSessionHolder();
+        JmsPoolSessionHolder state = safeGetSessionHolder();
         state.getConnection().checkClientJMSVersionSupport(2, 0);
         return addConsumer(state.getSession().createSharedDurableConsumer(topic, name));
     }
 
     @Override
     public MessageConsumer createSharedDurableConsumer(Topic topic, String name, String messageSelector) throws JMSException {
-        PooledSessionHolder state = safeGetSessionHolder();
+        JmsPoolSessionHolder state = safeGetSessionHolder();
         state.getConnection().checkClientJMSVersionSupport(2, 0);
         return addConsumer(state.getSession().createSharedDurableConsumer(topic, name, messageSelector));
     }
@@ -590,8 +589,8 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
         return receiver;
     }
 
-    private PooledSessionHolder safeGetSessionHolder() throws JMSException {
-        PooledSessionHolder sessionHolder = this.sessionHolder;
+    private JmsPoolSessionHolder safeGetSessionHolder() throws JMSException {
+        JmsPoolSessionHolder sessionHolder = this.sessionHolder;
         if (sessionHolder == null) {
             throw new IllegalStateException("The session has already been closed");
         }

@@ -14,36 +14,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.messaginghub.pooled.jms.pool;
+package org.messaginghub.pooled.jms;
 
 /**
  * A cache key for the session details used to locate PooledSession instances.
  */
-public final class PooledSessionKey {
+public final class JmsPoolSessionKey {
 
     private final boolean transacted;
     private final int ackMode;
+    private final int hashCode;
 
-    private int hash;
-
-    public PooledSessionKey(boolean transacted, int ackMode) {
+    public JmsPoolSessionKey(boolean transacted, int ackMode) {
         this.transacted = transacted;
         this.ackMode = ackMode;
-        this.hash = ackMode;
-
-        if (transacted) {
-            hash = 31 * hash + 1;
-        }
+        this.hashCode = computeHash(transacted, ackMode);
     }
 
     @Override
     public int hashCode() {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + ackMode;
-        result = prime * result + hash;
-        result = prime * result + (transacted ? 1231 : 1237);
-        return result;
+        return hashCode;
     }
 
     public boolean isTransacted() {
@@ -66,11 +56,11 @@ public final class PooledSessionKey {
             return false;
         }
 
-        PooledSessionKey other = (PooledSessionKey) obj;
-        if (hash != other.hash) {
+        final JmsPoolSessionKey other = (JmsPoolSessionKey) obj;
+
+        if (hashCode != other.hashCode) {
             return false;
         }
-
         if (ackMode != other.ackMode) {
             return false;
         }
@@ -79,5 +69,18 @@ public final class PooledSessionKey {
         }
 
         return true;
+    }
+
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + " { " + ackMode + ", " + transacted + " }";
+    }
+
+    private static int computeHash(boolean transacted, int ackMode) {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + ackMode;
+        result = prime * result + (transacted ? 1231 : 1237);
+        return result;
     }
 }

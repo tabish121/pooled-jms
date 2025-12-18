@@ -14,23 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.messaginghub.pooled.jms.pool;
+package org.messaginghub.pooled.jms;
+
+import javax.transaction.xa.XAResource;
+
+import org.apache.geronimo.transaction.manager.WrapperNamedXAResource;
 
 import jakarta.jms.Connection;
 import jakarta.jms.JMSException;
 import jakarta.jms.XASession;
 import jakarta.transaction.TransactionManager;
-import javax.transaction.xa.XAResource;
 
-import org.apache.geronimo.transaction.manager.WrapperNamedXAResource;
-import org.messaginghub.pooled.jms.JmsPoolSession;
-
-public class PooledJCAConnection extends PooledXAConnection {
+public class JmsPoolJCAConnectionHolder extends JmsPoolXAConnectionHolder {
 
     private final String name;
 
-    public PooledJCAConnection(Connection connection, TransactionManager transactionManager, String name) {
+    public JmsPoolJCAConnectionHolder(Connection connection, TransactionManager transactionManager, String name) {
         super(connection, transactionManager);
+
         this.name = name;
     }
 

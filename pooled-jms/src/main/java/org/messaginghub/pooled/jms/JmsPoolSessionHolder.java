@@ -14,10 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.messaginghub.pooled.jms.pool;
+package org.messaginghub.pooled.jms;
 
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import org.messaginghub.pooled.jms.util.LRUCache;
 
 import jakarta.jms.Destination;
 import jakarta.jms.IllegalStateException;
@@ -31,21 +33,15 @@ import jakarta.jms.Topic;
 import jakarta.jms.TopicPublisher;
 import jakarta.jms.TopicSession;
 
-import org.messaginghub.pooled.jms.JmsPoolMessageProducer;
-import org.messaginghub.pooled.jms.JmsPoolQueueSender;
-import org.messaginghub.pooled.jms.JmsPoolSession;
-import org.messaginghub.pooled.jms.JmsPoolTopicPublisher;
-import org.messaginghub.pooled.jms.util.LRUCache;
-
 /**
  * Used to store a pooled session instance and any resources that can
  * be left open and carried along with the pooled instance such as the
  * anonymous producer used for all MessageProducer instances created
  * from this pooled session when enabled.
  */
-public final class PooledSessionHolder {
+public final class JmsPoolSessionHolder {
 
-    private final PooledConnection connection;
+    private final JmsPoolConnectionHolder connection;
     private final Session session;
 
     private final boolean useAnonymousProducer;
@@ -59,7 +55,7 @@ public final class PooledSessionHolder {
     private final ProducerLRUCache<JmsPoolTopicPublisher> cachedPublishers;
     private final ProducerLRUCache<JmsPoolQueueSender> cachedSenders;
 
-    public PooledSessionHolder(PooledConnection connection, Session session, boolean useAnonymousProducer, int namedProducerCacheSize) {
+    public JmsPoolSessionHolder(JmsPoolConnectionHolder connection, Session session, boolean useAnonymousProducer, int namedProducerCacheSize) {
         this.connection = connection;
         this.session = session;
         this.useAnonymousProducer = useAnonymousProducer;
@@ -102,7 +98,6 @@ public final class PooledSessionHolder {
 
     public void onJmsPoolProducerClosed(JmsPoolMessageProducer producer, boolean force) throws JMSException {
         synchronized (this) {
-
             // We cache anonymous producers regardless of the useAnonymousProducer
             // setting so in either of those cases the pooled producer is not closed
             // unless the wrapper indicates a forced closure is being requested.
@@ -118,7 +113,6 @@ public final class PooledSessionHolder {
                 } catch (IllegalStateException jmsISE) {
                     // Delegated producer appears to be closed so remove it from pooling.
                     producer.getRefCount().decrementAndGet();
-                    force = true;
                 } catch (Exception ambiguous) {
                     // Not clear that the resource is closed so we don't assume it is.
                     return;
@@ -255,7 +249,7 @@ public final class PooledSessionHolder {
         return new JmsPoolQueueSender(jmsPoolSession, delegate, queue, refCount);
     }
 
-    public PooledConnection getConnection() {
+    public JmsPoolConnectionHolder getConnection() {
         return connection;
     }
 

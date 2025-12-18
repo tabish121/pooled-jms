@@ -14,8 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.messaginghub.pooled.jms.pool;
+package org.messaginghub.pooled.jms;
 
+import java.lang.invoke.MethodHandles;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -26,8 +27,6 @@ import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPoolConfig;
-import org.messaginghub.pooled.jms.JmsPoolSession;
-import org.messaginghub.pooled.jms.JmsPoolSessionEventListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,33 +47,30 @@ import jakarta.jms.TemporaryTopic;
  * that the temporary destinations of the managed Connection are purged when all references
  * to this ConnectionPool are released.
  */
-public class PooledConnection implements ExceptionListener {
+class JmsPoolConnectionHolder implements ExceptionListener {
 
-    private static final transient Logger LOG = LoggerFactory.getLogger(PooledConnection.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+    private final AtomicBoolean started = new AtomicBoolean(false);
+    private final GenericKeyedObjectPool<JmsPoolSessionKey, JmsPoolSessionHolder> sessionPool;
+    private final List<JmsPoolSession> loanedSessions = new CopyOnWriteArrayList<JmsPoolSession>();
+    private final String connectionId;
 
     protected Connection connection;
+
     private int referenceCount;
     private long lastUsed = System.currentTimeMillis();
     private boolean hasExpired;
-    private int idleTimeout = 30 * 1000;
+    private int idleTimeout = 30_000;
     private boolean useAnonymousProducers = true;
     private int explicitProducerCacheSize;
     private int jmsMajorVersion = 1;
     private int jmsMinorVersion = 1;
     private boolean faultTolerantConnection;
-
-    private final AtomicBoolean started = new AtomicBoolean(false);
-    private final GenericKeyedObjectPool<PooledSessionKey, PooledSessionHolder> sessionPool;
-    private final List<JmsPoolSession> loanedSessions = new CopyOnWriteArrayList<JmsPoolSession>();
-    private final String connectionId;
     private ExceptionListener parentExceptionListener;
 
-    public PooledConnection(Connection connection) {
-        final GenericKeyedObjectPoolConfig<PooledSessionHolder> poolConfig = new GenericKeyedObjectPoolConfig<>();
-        poolConfig.setJmxEnabled(false);
-        poolConfig.setTestOnBorrow(true);
-
-        this.connection = wrap(connection);
+    public JmsPoolConnectionHolder(Connection connection) {
+        this.connection = connection;
         this.connectionId = connection.toString();
 
         try {
@@ -83,7 +79,7 @@ public class PooledConnection implements ExceptionListener {
 
             // Replace wrapped connection exception listener to allow pooled wrapper to deal
             // with exceptions first before sending them onto any set external listener.
-            this.connection.setExceptionListener(this);
+            connection.setExceptionListener(this);
         } catch (JMSException ex) {
             LOG.warn("Could not set exception listener on create of ConnectionPool");
         }
@@ -98,24 +94,28 @@ public class PooledConnection implements ExceptionListener {
             jmsMinorVersion = 0;
         }
 
+        final GenericKeyedObjectPoolConfig<JmsPoolSessionHolder> poolConfig = new GenericKeyedObjectPoolConfig<>();
+        poolConfig.setJmxEnabled(false);
+        poolConfig.setTestOnBorrow(true);
+
         // Create our internal Pool of session instances.
-        this.sessionPool = new GenericKeyedObjectPool<PooledSessionKey, PooledSessionHolder>(
-            new KeyedPooledObjectFactory<PooledSessionKey, PooledSessionHolder>() {
+        sessionPool = new GenericKeyedObjectPool<JmsPoolSessionKey, JmsPoolSessionHolder>(
+            new KeyedPooledObjectFactory<JmsPoolSessionKey, JmsPoolSessionHolder>() {
 
                 @Override
-                public PooledObject<PooledSessionHolder> makeObject(PooledSessionKey sessionKey) throws Exception {
-                    return new DefaultPooledObject<PooledSessionHolder>(
-                        new PooledSessionHolder(PooledConnection.this, makeSession(sessionKey), useAnonymousProducers, explicitProducerCacheSize));
+                public PooledObject<JmsPoolSessionHolder> makeObject(JmsPoolSessionKey sessionKey) throws Exception {
+                    return new DefaultPooledObject<JmsPoolSessionHolder>(
+                        new JmsPoolSessionHolder(JmsPoolConnectionHolder.this, makeSession(sessionKey), useAnonymousProducers, explicitProducerCacheSize));
                 }
 
                 @Override
-                public void destroyObject(PooledSessionKey sessionKey, PooledObject<PooledSessionHolder> pooledObject) throws Exception {
+                public void destroyObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSessionHolder> pooledObject) throws Exception {
                     pooledObject.getObject().close();
                 }
 
                 @Override
-                public boolean validateObject(PooledSessionKey sessionKey, PooledObject<PooledSessionHolder> pooledObject) {
-                    PooledSessionHolder sessionHolder = pooledObject.getObject();
+                public boolean validateObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSessionHolder> pooledObject) {
+                    JmsPoolSessionHolder sessionHolder = pooledObject.getObject();
 
                     try {
                         sessionHolder.getSession().getTransacted();
@@ -129,31 +129,15 @@ public class PooledConnection implements ExceptionListener {
                 }
 
                 @Override
-                public void activateObject(PooledSessionKey sessionKey, PooledObject<PooledSessionHolder> pooledObject) throws Exception {
+                public void activateObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSessionHolder> pooledObject) throws Exception {
                 }
 
                 @Override
-                public void passivateObject(PooledSessionKey sessionKey, PooledObject<PooledSessionHolder> pooledObject) throws Exception {
+                public void passivateObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSessionHolder> pooledObject) throws Exception {
                 }
 
             }, poolConfig
         );
-    }
-
-    // useful when external failure needs to force expiration
-    public void setHasExpired(boolean val) {
-        hasExpired = val;
-    }
-
-    protected Session makeSession(PooledSessionKey key) throws JMSException {
-        return connection.createSession(key.isTransacted(), key.getAckMode());
-    }
-
-    protected Connection wrap(Connection connection) {
-        return connection;
-    }
-
-    protected void unWrap(Connection connection) {
     }
 
     public void start() throws JMSException {
@@ -173,7 +157,7 @@ public class PooledConnection implements ExceptionListener {
     }
 
     public Session createSession(boolean transacted, int ackMode) throws JMSException {
-        PooledSessionKey key = new PooledSessionKey(transacted, ackMode);
+        JmsPoolSessionKey key = new JmsPoolSessionKey(transacted, ackMode);
         JmsPoolSession session;
         try {
             session = new JmsPoolSession(key, sessionPool.borrowObject(key), sessionPool, key.isTransacted());
@@ -189,10 +173,11 @@ public class PooledConnection implements ExceptionListener {
 
                 @Override
                 public void onSessionClosed(JmsPoolSession session) {
-                    PooledConnection.this.loanedSessions.remove(session);
+                    loanedSessions.remove(session);
                 }
             });
-            this.loanedSessions.add(session);
+
+            loanedSessions.add(session);
         } catch (Exception e) {
             IllegalStateException illegalStateException = new IllegalStateException(e.toString());
             illegalStateException.initCause(e);
@@ -221,67 +206,6 @@ public class PooledConnection implements ExceptionListener {
         return connection == null;
     }
 
-    public synchronized void incrementReferenceCount() {
-        referenceCount++;
-        lastUsed = System.currentTimeMillis();
-    }
-
-    public synchronized void decrementReferenceCount() {
-        referenceCount--;
-        lastUsed = System.currentTimeMillis();
-        if (referenceCount == 0) {
-            // Loaned sessions are those that are active in the sessionPool and
-            // have not been closed by the client before closing the connection.
-            // These need to be closed so that all session's reflect the fact
-            // that the parent Connection is closed.
-            for (JmsPoolSession session : this.loanedSessions) {
-                try {
-                    session.close();
-                } catch (Exception e) {
-                }
-            }
-            this.loanedSessions.clear();
-
-            unWrap(getConnection());
-
-            idleTimeoutCheck();
-        }
-    }
-
-    /**
-     * Determines if this Connection has expired.
-     * <p>
-     * A PooledConnection is considered expired when all references to it are released AND the
-     * configured idleTimeout has elapsed.  Once a PooledConnection is determined to have expired
-     * its underlying Connection is closed.
-     *
-     * @return true if this connection has expired and can be closed.
-     */
-    public synchronized boolean idleTimeoutCheck() {
-        boolean expired = false;
-
-        if (connection == null) {
-            return true;
-        }
-
-        if (hasExpired) {
-            if (referenceCount == 0) {
-                close();
-                expired = true;
-            }
-        }
-
-        // Only set hasExpired here is no references, as a Connection with references is by
-        // definition not idle at this time.
-        if (referenceCount == 0 && idleTimeout > 0 && (lastUsed + idleTimeout) - System.currentTimeMillis() < 0) {
-            hasExpired = true;
-            close();
-            expired = true;
-        }
-
-        return expired;
-    }
-
     public int getIdleTimeout() {
         return idleTimeout;
     }
@@ -291,35 +215,35 @@ public class PooledConnection implements ExceptionListener {
     }
 
     public int getMaxSessionsPerConnection() {
-        return this.sessionPool.getMaxTotalPerKey();
+        return sessionPool.getMaxTotalPerKey();
     }
 
     public void setMaxSessionsPerConnection(int maxActiveSessionsPerConnection) {
-        this.sessionPool.setMaxTotalPerKey(maxActiveSessionsPerConnection);
+        sessionPool.setMaxTotalPerKey(maxActiveSessionsPerConnection);
     }
 
     public int getMaxIdleSessionsPerConnection() {
-        return this.sessionPool.getMaxIdlePerKey();
+        return sessionPool.getMaxIdlePerKey();
     }
 
     public void setMaxIdleSessionsPerConnection(int maxIdleSessionsPerConnection) {
-        this.sessionPool.setMaxIdlePerKey(maxIdleSessionsPerConnection);
+        sessionPool.setMaxIdlePerKey(maxIdleSessionsPerConnection);
     }
 
     public boolean isUseAnonymousProducers() {
-        return this.useAnonymousProducers;
+        return useAnonymousProducers;
     }
 
     public void setUseAnonymousProducers(boolean value) {
-        this.useAnonymousProducers = value;
+        useAnonymousProducers = value;
     }
 
     public int getExplicitProducerCacheSize() {
-        return this.explicitProducerCacheSize;
+        return explicitProducerCacheSize;
     }
 
     public void setExplicitProducerCacheSize(int cacheSize) {
-        this.explicitProducerCacheSize = cacheSize;
+        explicitProducerCacheSize = cacheSize;
     }
 
     public boolean isFaultTolerantConnection() {
@@ -335,21 +259,21 @@ public class PooledConnection implements ExceptionListener {
      *          currently loaned out to any client.
      */
     public int getNumSessions() {
-        return this.sessionPool.getNumIdle() + this.sessionPool.getNumActive();
+        return sessionPool.getNumIdle() + sessionPool.getNumActive();
     }
 
     /**
      * @return the total number of Sessions that are in the Session pool but not loaned out.
      */
     public int getNumIdleSessions() {
-        return this.sessionPool.getNumIdle();
+        return sessionPool.getNumIdle();
     }
 
     /**
      * @return the total number of Session's that have been loaned to PooledConnection instances.
      */
     public int getNumActiveSessions() {
-        return this.sessionPool.getNumActive();
+        return sessionPool.getNumActive();
     }
 
     /**
@@ -361,11 +285,11 @@ public class PooledConnection implements ExceptionListener {
      * 		Indicates whether blocking should be used to wait for more space to create a session.
      */
     public void setBlockIfSessionPoolIsFull(boolean block) {
-        this.sessionPool.setBlockWhenExhausted(block);
+        sessionPool.setBlockWhenExhausted(block);
     }
 
     public boolean isBlockIfSessionPoolIsFull() {
-        return this.sessionPool.getBlockWhenExhausted();
+        return sessionPool.getBlockWhenExhausted();
     }
 
     /**
@@ -375,7 +299,7 @@ public class PooledConnection implements ExceptionListener {
      * @see #setBlockIfSessionPoolIsFull(boolean)
      */
     public long getBlockIfSessionPoolIsFullTimeout() {
-        return this.sessionPool.getMaxWaitDuration().toMillis();
+        return sessionPool.getMaxWaitDuration().toMillis();
     }
 
     /**
@@ -393,7 +317,7 @@ public class PooledConnection implements ExceptionListener {
      *                                        then use this setting to configure how long to block before retry
      */
     public void setBlockIfSessionPoolIsFullTimeout(long blockIfSessionPoolIsFullTimeout) {
-        this.sessionPool.setMaxWait(Duration.ofMillis(blockIfSessionPoolIsFullTimeout));
+        sessionPool.setMaxWait(Duration.ofMillis(blockIfSessionPoolIsFullTimeout));
     }
 
     /**
@@ -408,11 +332,7 @@ public class PooledConnection implements ExceptionListener {
      * @return true if the Connection supports the version range given.
      */
     public boolean isJMSVersionSupported(int requiredMajor, int requiredMinor) {
-        if (jmsMajorVersion >= requiredMajor && jmsMinorVersion >= requiredMinor) {
-            return true;
-        }
-
-        return false;
+        return jmsMajorVersion >= requiredMajor && jmsMinorVersion >= requiredMinor;
     }
 
     public ExceptionListener getParentExceptionListener() {
@@ -441,14 +361,72 @@ public class PooledConnection implements ExceptionListener {
 
     @Override
     public String toString() {
-        return "ConnectionPool[" + connectionId + "]";
+        return "JmsPoolConnectionHolder[ " + connectionId + " ]";
     }
 
-    public void checkClientJMSVersionSupport(int requiredMajor, int requiredMinor) throws JMSException {
+    protected Session makeSession(JmsPoolSessionKey key) throws JMSException {
+        return connection.createSession(key.isTransacted(), key.getAckMode());
+    }
+
+    synchronized void incrementReferenceCount() {
+        if (connection != null) {
+            referenceCount++;
+            lastUsed = System.currentTimeMillis();
+        }
+    }
+
+    synchronized void decrementReferenceCount() {
+        if (connection != null) {
+            Math.min(0, referenceCount--);
+            lastUsed = System.currentTimeMillis();
+
+            if (referenceCount == 0) {
+                // Loaned sessions are those that are active in the sessionPool and
+                // have not been closed by the client before closing the connection.
+                // These need to be closed so that all session's reflect the fact
+                // that the parent Connection is closed.
+                for (JmsPoolSession session : loanedSessions) {
+                    try {
+                        session.close();
+                    } catch (Exception e) {
+                    }
+                }
+
+                loanedSessions.clear();
+                idleTimeoutCheck();
+            }
+        }
+    }
+
+    /**
+     * Determines if this Connection has expired.
+     * <p>
+     * A PooledConnection is considered expired when all references to it are released AND the
+     * configured idleTimeout has elapsed.  Once a PooledConnection is determined to have expired
+     * its underlying Connection is closed.
+     *
+     * @return true if this connection has expired and can be closed.
+     */
+    synchronized boolean idleTimeoutCheck() {
+        if (connection == null || hasExpired) {
+            return true;
+        }
+
+        // Only set hasExpired here if no references, as a Connection with references is by
+        // definition not idle at this time.
+        if (referenceCount == 0 && idleTimeout > 0 && (lastUsed + idleTimeout) - System.currentTimeMillis() < 0) {
+            hasExpired = true;
+            close();
+        }
+
+        return hasExpired;
+    }
+
+    void checkClientJMSVersionSupport(int requiredMajor, int requiredMinor) throws JMSException {
         checkClientJMSVersionSupport(requiredMajor, requiredMinor, false);
     }
 
-    public void checkClientJMSVersionSupport(int requiredMajor, int requiredMinor, boolean runtimeEx) throws JMSException {
+    void checkClientJMSVersionSupport(int requiredMajor, int requiredMinor, boolean runtimeEx) throws JMSException {
         if (jmsMajorVersion >= requiredMajor && jmsMinorVersion >= requiredMinor) {
             return;
         }
