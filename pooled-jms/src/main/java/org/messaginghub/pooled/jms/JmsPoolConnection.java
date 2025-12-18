@@ -17,9 +17,10 @@
 package org.messaginghub.pooled.jms;
 
 import java.lang.invoke.MethodHandles;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,24 +44,27 @@ import jakarta.jms.TopicConnection;
 import jakarta.jms.TopicSession;
 
 /**
- * Represents a proxy {@link Connection} which is-a {@link TopicConnection} and
- * {@link QueueConnection} which is pooled and on {@link #close()} will return
- * its reference to the ConnectionPool backing it.
- *
- * <b>NOTE</b> this implementation is only intended for use when sending
- * messages. It does not deal with pooling of consumers.
+ * Represents a proxy {@link Connection} which implements both the {@link TopicConnection} and
+ * {@link QueueConnection} interfaces and on a call to {@link #close()} will return its reference
+ * to the pooled connection back to JMS connection pool manager.
+ * <p>
+ * <b>NOTE</b> this implementation is only intended for use when sending messages. It does not deal
+ * with pooling of consumers but it can be used to create consumers as normal.
  */
 public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsPoolSessionEventListener, AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+    private static final AtomicIntegerFieldUpdater<JmsPoolConnection> CLOSED_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(JmsPoolConnection.class, "closed");
+
     protected JmsPoolConnectionHolder connection;
 
-    private final AtomicBoolean closed = new AtomicBoolean();
+    private volatile int closed;
 
-    private final List<TemporaryQueue> connTempQueues = new CopyOnWriteArrayList<TemporaryQueue>();
-    private final List<TemporaryTopic> connTempTopics = new CopyOnWriteArrayList<TemporaryTopic>();
-    private final List<JmsPoolSession> loanedSessions = new CopyOnWriteArrayList<JmsPoolSession>();
+    private final List<TemporaryQueue> managedTempQueues = Collections.synchronizedList(new ArrayList<TemporaryQueue>());
+    private final List<TemporaryTopic> managedTempTopics = Collections.synchronizedList(new ArrayList<TemporaryTopic>());
+    private final List<JmsPoolSession> managedSessions = Collections.synchronizedList(new ArrayList<JmsPoolSession>());
 
     /**
      * Creates a new PooledConnection instance that uses the given ConnectionPool to create
@@ -76,9 +80,8 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
 
     @Override
     public void close() throws JMSException {
-        if (closed.compareAndSet(false, true)) {
-            cleanupAllLoanedSessions();
-            cleanupConnectionTemporaryDestinations();
+        if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
+            cleanupManagedConnectionResources();
             if (connection != null) {
                 connection.decrementReferenceCount();
                 connection = null;
@@ -191,15 +194,16 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
     public Session createSession(boolean transacted, int ackMode) throws JMSException {
         checkClosed();
 
-        JmsPoolSession result = (JmsPoolSession) connection.createSession(transacted, ackMode);
+        final JmsPoolSession result = (JmsPoolSession) connection.createSession(transacted, ackMode);
 
         // Store the session so we can close the sessions that this Pooled JMS Connection
         // created in order to ensure that consumers etc are closed per the JMS contract.
-        loanedSessions.add(result);
+        managedSessions.add(result);
 
         // Add a event listener to the session that notifies us when the session
         // creates / destroys temporary destinations and closes etc.
         result.addSessionEventListener(this);
+
         return result;
     }
 
@@ -207,17 +211,23 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
 
     @Override
     public void onTemporaryQueueCreate(TemporaryQueue tempQueue) {
-        connTempQueues.add(tempQueue);
+        if (!isClosed()) {
+            managedTempQueues.add(tempQueue);
+        }
     }
 
     @Override
     public void onTemporaryTopicCreate(TemporaryTopic tempTopic) {
-        connTempTopics.add(tempTopic);
+        if (!isClosed()) {
+            managedTempTopics.add(tempTopic);
+        }
     }
 
     @Override
     public void onSessionClosed(JmsPoolSession session) {
-        this.loanedSessions.remove(session);
+        if (!isClosed()) {
+            managedSessions.remove(session);
+        }
     }
 
     public Connection getConnection() throws JMSException {
@@ -230,49 +240,50 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
         return getClass().getSimpleName() + " { " + connection + " }";
     }
 
-    /**
-     * Remove all of the temporary destinations created for this connection.
-     * This is important since the underlying connection may be reused over a
-     * long period of time, accumulating all of the temporary destinations from
-     * each use. However, from the perspective of the life-cycle from the
-     * client's view, close() closes the connection and, therefore, deletes all
-     * of the temporary destinations created.
+    /*
+     * Cleans up resources created in this wrapped connection instance which are isolated from other
+     * instances which may also be sharing this same pooled connection.
+     *
+     * Remove all of the temporary destinations created for this connection. This is important since
+     * the underlying connection may be reused over a long period of time, accumulating all of the
+     * temporary destinations from each use. However, from the perspective of the life-cycle from the
+     * client's view, close() closes the connection and, therefore, deletes all of the temporary
+     * destinations created.
+     *
+     * The pooled connection tracks all Sessions that it created and now we close them. Closing the
+     * pooled session will return the internal Session to the Pool of Session after cleaning up all
+     * the resources that the Session had allocated for this PooledConnection.
      */
-    protected void cleanupConnectionTemporaryDestinations() {
-        for (TemporaryQueue tempQueue : connTempQueues) {
+    private void cleanupManagedConnectionResources() {
+        managedTempQueues.removeIf(tempQueue -> {
             try {
                 tempQueue.delete();
             } catch (JMSException ex) {
                 LOG.info("failed to delete Temporary Queue \"" + tempQueue.toString() + "\" on closing pooled connection: " + ex.getMessage());
             }
-        }
-        connTempQueues.clear();
 
-        for (TemporaryTopic tempTopic : connTempTopics) {
+            return true;
+        });
+
+        managedTempTopics.removeIf(tempTopic -> {
             try {
                 tempTopic.delete();
             } catch (JMSException ex) {
                 LOG.info("failed to delete Temporary Topic \"" + tempTopic.toString() + "\" on closing pooled connection: " + ex.getMessage());
             }
-        }
-        connTempTopics.clear();
-    }
 
-    /**
-     * The PooledSession tracks all Sessions that it created and now we close them.  Closing the
-     * PooledSession will return the internal Session to the Pool of Session after cleaning up
-     * all the resources that the Session had allocated for this PooledConnection.
-     */
-    protected void cleanupAllLoanedSessions() {
-        for (JmsPoolSession session : loanedSessions) {
+            return true;
+        });
+
+        managedSessions.removeIf(session -> {
             try {
                 session.close();
             } catch (JMSException ex) {
                 LOG.info("failed to close loaned Session \"" + session + "\" on closing pooled connection: " + ex.getMessage());
             }
-        }
 
-        loanedSessions.clear();
+            return true;
+        });
     }
 
     /**
@@ -308,9 +319,13 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
 
     //----- Internal support methods -----------------------------------------//
 
+    protected boolean isClosed() {
+        return closed > 0;
+    }
+
     protected void checkClosed() throws IllegalStateException {
-        if (closed.get()) {
-            throw new IllegalStateException("Connection closed");
+        if (isClosed()) {
+            throw new IllegalStateException("Connection has already been closed");
         }
     }
 }
