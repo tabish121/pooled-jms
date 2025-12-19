@@ -51,7 +51,7 @@ import jakarta.jms.TopicSession;
  * <b>NOTE</b> this implementation is only intended for use when sending messages. It does not deal
  * with pooling of consumers but it can be used to create consumers as normal.
  */
-public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsPoolSessionEventListener, AutoCloseable {
+public class JmsPoolConnection implements TopicConnection, QueueConnection, AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -59,9 +59,11 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
         AtomicIntegerFieldUpdater.newUpdater(JmsPoolConnection.class, "closed");
 
     protected JmsPoolConnectionHolder connection;
+    protected volatile ExceptionListener connectionExceptionListener;
 
     private volatile int closed;
 
+    private final JmsPoolConnectionCallbacks callbacks = new JmsPoolConnectionCallbacks();
     private final List<TemporaryQueue> managedTempQueues = Collections.synchronizedList(new ArrayList<TemporaryQueue>());
     private final List<TemporaryTopic> managedTempTopics = Collections.synchronizedList(new ArrayList<TemporaryTopic>());
     private final List<JmsPoolSession> managedSessions = Collections.synchronizedList(new ArrayList<JmsPoolSession>());
@@ -76,6 +78,7 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
      */
     public JmsPoolConnection(JmsPoolConnectionHolder pool) {
         this.connection = pool;
+        this.connection.addWrapperExceptionListener(callbacks);
     }
 
     @Override
@@ -83,6 +86,8 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
         if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
             cleanupManagedConnectionResources();
             if (connection != null) {
+                connectionExceptionListener = null;
+                connection.removeWrapperExceptionListener(callbacks);
                 connection.decrementReferenceCount();
                 connection = null;
             }
@@ -108,13 +113,13 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
     @Override
     public ExceptionListener getExceptionListener() throws JMSException {
         checkClosed();
-        return connection.getParentExceptionListener();
+        return connectionExceptionListener != null ? connectionExceptionListener : connection.getConnectionFactoryExceptionListener();
     }
 
     @Override
     public void setExceptionListener(ExceptionListener exceptionListener) throws JMSException {
         checkClosed();
-        connection.setParentExceptionListener(exceptionListener);
+        connectionExceptionListener = exceptionListener;
     }
 
     @Override
@@ -202,42 +207,73 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
 
         // Add a event listener to the session that notifies us when the session
         // creates / destroys temporary destinations and closes etc.
-        result.addSessionEventListener(this);
+        result.addSessionEventListener(callbacks);
 
         return result;
-    }
-
-    //----- Pooled JMS Session specific methods ------------------------------//
-
-    @Override
-    public void onTemporaryQueueCreate(TemporaryQueue tempQueue) {
-        if (!isClosed()) {
-            managedTempQueues.add(tempQueue);
-        }
-    }
-
-    @Override
-    public void onTemporaryTopicCreate(TemporaryTopic tempTopic) {
-        if (!isClosed()) {
-            managedTempTopics.add(tempTopic);
-        }
-    }
-
-    @Override
-    public void onSessionClosed(JmsPoolSession session) {
-        if (!isClosed()) {
-            managedSessions.remove(session);
-        }
-    }
-
-    public Connection getConnection() throws JMSException {
-        checkClosed();
-        return connection.getConnection();
     }
 
     @Override
     public String toString() {
         return getClass().getSimpleName() + " { " + connection + " }";
+    }
+
+    /**
+     * Provides access to the underlying provider JMS {@link Connection}.
+     * <p>
+     * This is not thread safe and is not meant for general use and its results are undefined.
+     *
+     * @return the {@link Connection} from the JMS provider that is being pooled.
+     *
+     * @throws JMSException if an error occurs while trying to access the underlying connection.
+     */
+    public Connection getConnection() throws JMSException {
+        checkClosed();
+        return connection.getConnection();
+    }
+
+    //----- Metrics APIs -----------------------------------------------------//
+
+    /**
+     * @return the total number of Pooled session including idle sessions that are not
+     *          currently loaned out to any client.
+     *
+     * @throws JMSException if the connection has been closed.
+     */
+    public int getNumSessions() throws JMSException {
+        checkClosed();
+        return connection.getNumSessions();
+    }
+
+    /**
+     * @return the number of Sessions that are currently checked out of this Connection's session pool.
+     *
+     * @throws JMSException if the connection has been closed.
+     */
+    public int getNumActiveSessions() throws JMSException {
+        checkClosed();
+        return connection.getNumActiveSessions();
+    }
+
+    /**
+     * @return the number of Sessions that are idle in this Connection's sessions pool.
+     *
+     * @throws JMSException if the connection has been closed.
+     */
+    public int getNumtIdleSessions() throws JMSException {
+        checkClosed();
+        return connection.getNumIdleSessions();
+    }
+
+    //----- Internal support methods -----------------------------------------//
+
+    protected boolean isClosed() {
+        return closed > 0;
+    }
+
+    protected void checkClosed() throws IllegalStateException {
+        if (isClosed()) {
+            throw new IllegalStateException("Connection has already been closed");
+        }
     }
 
     /*
@@ -286,46 +322,42 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, JmsP
         });
     }
 
-    /**
-     * @return the total number of Pooled session including idle sessions that are not
-     *          currently loaned out to any client.
-     *
-     * @throws JMSException if the connection has been closed.
-     */
-    public int getNumSessions() throws JMSException {
-        checkClosed();
-        return connection.getNumSessions();
-    }
+    //----- Internal resource callback APIs ----------------------------------//
 
-    /**
-     * @return the number of Sessions that are currently checked out of this Connection's session pool.
-     *
-     * @throws JMSException if the connection has been closed.
-     */
-    public int getNumActiveSessions() throws JMSException {
-        checkClosed();
-        return connection.getNumActiveSessions();
-    }
+    private class JmsPoolConnectionCallbacks implements JmsPoolSessionEventListener, ExceptionListener {
 
-    /**
-     * @return the number of Sessions that are idle in this Connection's sessions pool.
-     *
-     * @throws JMSException if the connection has been closed.
-     */
-    public int getNumtIdleSessions() throws JMSException {
-        checkClosed();
-        return connection.getNumIdleSessions();
-    }
+        @Override
+        public void onException(JMSException exception) {
+            final ExceptionListener listener = connectionExceptionListener;
 
-    //----- Internal support methods -----------------------------------------//
+            if (!isClosed() && listener != null) {
+                try {
+                    listener.onException(exception);
+                } catch (Exception ex) {
+                    LOG.trace("Client configured exception listener threw exception which will be ignored", ex);
+                }
+            }
+        }
 
-    protected boolean isClosed() {
-        return closed > 0;
-    }
+        @Override
+        public void onTemporaryQueueCreate(TemporaryQueue tempQueue) {
+            if (!isClosed()) {
+                managedTempQueues.add(tempQueue);
+            }
+        }
 
-    protected void checkClosed() throws IllegalStateException {
-        if (isClosed()) {
-            throw new IllegalStateException("Connection has already been closed");
+        @Override
+        public void onTemporaryTopicCreate(TemporaryTopic tempTopic) {
+            if (!isClosed()) {
+                managedTempTopics.add(tempTopic);
+            }
+        }
+
+        @Override
+        public void onSessionClosed(JmsPoolSession session) {
+            if (!isClosed()) {
+                managedSessions.remove(session);
+            }
         }
     }
 }
