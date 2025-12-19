@@ -19,6 +19,9 @@ package org.messaginghub.pooled.jms;
 import java.lang.invoke.MethodHandles;
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -31,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import jakarta.jms.Connection;
+import jakarta.jms.ConnectionMetaData;
 import jakarta.jms.ExceptionListener;
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
@@ -53,8 +57,10 @@ class JmsPoolConnectionHolder implements ExceptionListener {
 
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final GenericKeyedObjectPool<JmsPoolSessionKey, JmsPoolSessionHolder> sessionPool;
-    private final List<JmsPoolSession> loanedSessions = new CopyOnWriteArrayList<JmsPoolSession>();
+    private final List<JmsPoolSession> loanedSessions = new CopyOnWriteArrayList<>();
     private final String connectionId;
+
+    private final Queue<ExceptionListener> exceptionListeners = new ConcurrentLinkedQueue<>();
 
     protected Connection connection;
 
@@ -67,7 +73,7 @@ class JmsPoolConnectionHolder implements ExceptionListener {
     private int jmsMajorVersion = 1;
     private int jmsMinorVersion = 1;
     private boolean faultTolerantConnection;
-    private ExceptionListener parentExceptionListener;
+    private ExceptionListener connectionFactoryExceptionListener;
 
     public JmsPoolConnectionHolder(Connection connection) {
         this.connection = connection;
@@ -75,7 +81,7 @@ class JmsPoolConnectionHolder implements ExceptionListener {
 
         try {
             // Check if wrapped connection already had an exception listener and preserve it
-            setParentExceptionListener(connection.getExceptionListener());
+            setConnectionFactoryExceptionListener(connection.getExceptionListener());
 
             // Replace wrapped connection exception listener to allow pooled wrapper to deal
             // with exceptions first before sending them onto any set external listener.
@@ -84,10 +90,12 @@ class JmsPoolConnectionHolder implements ExceptionListener {
             LOG.warn("Could not set exception listener on create of ConnectionPool");
         }
 
-        // Determine the version support of this client
+        // Attempt to determine JMS the version support of JMS provider.
         try {
-            jmsMajorVersion = connection.getMetaData().getJMSMajorVersion();
-            jmsMinorVersion = connection.getMetaData().getJMSMajorVersion();
+            final ConnectionMetaData connectionMetaData = connection.getMetaData();
+
+            jmsMajorVersion = connectionMetaData.getJMSMajorVersion();
+            jmsMinorVersion = connectionMetaData.getJMSMajorVersion();
         } catch (JMSException ex) {
             LOG.debug("Error while fetching JMS API version from provider, defaulting to v3.0");
             jmsMajorVersion = 3;
@@ -335,12 +343,12 @@ class JmsPoolConnectionHolder implements ExceptionListener {
         return jmsMajorVersion >= requiredMajor && jmsMinorVersion >= requiredMinor;
     }
 
-    public ExceptionListener getParentExceptionListener() {
-        return parentExceptionListener;
+    public ExceptionListener getConnectionFactoryExceptionListener() {
+        return connectionFactoryExceptionListener;
     }
 
-    public void setParentExceptionListener(ExceptionListener parentExceptionListener) {
-        this.parentExceptionListener = parentExceptionListener;
+    public void setConnectionFactoryExceptionListener(ExceptionListener parentExceptionListener) {
+        this.connectionFactoryExceptionListener = parentExceptionListener;
     }
 
     @Override
@@ -354,8 +362,23 @@ class JmsPoolConnectionHolder implements ExceptionListener {
             close();
         }
 
-        if (parentExceptionListener != null) {
-            parentExceptionListener.onException(exception);
+        // Each JMS connection that comes from the pool wraps a connection holder and can
+        // have its own assigned exception listener which we will call first before calling
+        // any root exception listener that was configured from the parent connection factory.
+        exceptionListeners.forEach(listener -> {
+            try {
+                listener.onException(exception);
+            } catch (Exception ex) {
+                LOG.trace("Ignored exception from pooled connection wrapper assigned listener:", ex);
+            }
+        });
+
+        // If the provider has an exception listener from the connection factory we
+        // will always call it to allow for the base level error handling to be run
+        // regardless of any assigned exception that was set on the wrapper object
+        // that was given to the borrowing client code.
+        if (connectionFactoryExceptionListener != null) {
+            connectionFactoryExceptionListener.onException(exception);
         }
     }
 
@@ -366,6 +389,14 @@ class JmsPoolConnectionHolder implements ExceptionListener {
 
     protected Session makeSession(JmsPoolSessionKey key) throws JMSException {
         return connection.createSession(key.isTransacted(), key.getAckMode());
+    }
+
+    synchronized void addWrapperExceptionListener(ExceptionListener listener) {
+        exceptionListeners.add(Objects.requireNonNull(listener));
+    }
+
+    synchronized void removeWrapperExceptionListener(ExceptionListener listener) {
+        exceptionListeners.remove(listener);
     }
 
     synchronized void incrementReferenceCount() {

@@ -59,7 +59,7 @@ import jakarta.jms.TemporaryTopic;
 /**
  * A couple of tests against the PooledConnection class.
  */
-@Timeout(60)
+@Timeout(20)
 public class JmsPoolConnectionTest extends JmsPoolTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(JmsPoolConnectionTest.class);
@@ -596,5 +596,40 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
         session = connection2.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
         connection2.close();
+    }
+
+    public void testUniqueExceptionListenersGetsNotified() throws Exception {
+        final CountDownLatch signal1 = new CountDownLatch(1);
+        final CountDownLatch signal2 = new CountDownLatch(1);
+
+        Connection connection1 = cf.createConnection();
+        Connection connection2 = cf.createConnection();
+
+        connection1.setExceptionListener(new ExceptionListener() {
+
+            @Override
+            public void onException(JMSException exception) {
+                LOG.info("ExceptionListener 1 called with error: {}", exception.getMessage());
+                signal1.countDown();
+            }
+        });
+
+        connection2.setExceptionListener(new ExceptionListener() {
+
+            @Override
+            public void onException(JMSException exception) {
+                LOG.info("ExceptionListener 2 called with error: {}", exception.getMessage());
+                signal2.countDown();
+            }
+        });
+
+        assertNotNull(connection1.getExceptionListener());
+        assertNotNull(connection2.getExceptionListener());
+
+        MockJMSConnection mockJMSConnection = (MockJMSConnection) ((JmsPoolConnection) connection1).getConnection();
+        mockJMSConnection.injectConnectionError(new JMSException("Some non-fatal error"));
+
+        assertTrue(signal1.await(5, TimeUnit.SECONDS));
+        assertTrue(signal2.await(5, TimeUnit.SECONDS));
     }
 }
