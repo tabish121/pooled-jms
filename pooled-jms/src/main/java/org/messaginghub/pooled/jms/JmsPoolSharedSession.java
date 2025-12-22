@@ -38,7 +38,7 @@ import jakarta.jms.TopicSession;
  * and carried along with the pooled instance such as the anonymous producer used
  * for all MessageProducer instances created from this pooled session when enabled.
  */
-public final class JmsPoolSharedSession {
+final class JmsPoolSharedSession {
 
     private final JmsPoolSharedConnection connection;
     private final Session session;

@@ -18,11 +18,11 @@ package org.messaginghub.pooled.jms;
 
 import java.lang.invoke.MethodHandles;
 import java.time.Duration;
-import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.commons.pool2.KeyedPooledObjectFactory;
@@ -57,10 +57,9 @@ class JmsPoolSharedConnection implements ExceptionListener {
 
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final GenericKeyedObjectPool<JmsPoolSessionKey, JmsPoolSharedSession> sessionPool;
-    private final List<JmsPoolSession> loanedSessions = new CopyOnWriteArrayList<>();
-    private final String connectionId;
-
+    private final Map<JmsPoolSession, JmsPoolSession> loanedSessions = new ConcurrentHashMap<>();
     private final Queue<ExceptionListener> exceptionListeners = new ConcurrentLinkedQueue<>();
+    private final String connectionId;
 
     protected Connection connection;
 
@@ -185,7 +184,7 @@ class JmsPoolSharedConnection implements ExceptionListener {
                 }
             });
 
-            loanedSessions.add(session);
+            loanedSessions.put(session, session);
         } catch (Exception e) {
             IllegalStateException illegalStateException = new IllegalStateException(e.toString());
             illegalStateException.initCause(e);
@@ -412,16 +411,17 @@ class JmsPoolSharedConnection implements ExceptionListener {
             lastUsed = System.currentTimeMillis();
 
             if (referenceCount == 0) {
-                // Loaned sessions are those that are active in the sessionPool and
-                // have not been closed by the client before closing the connection.
-                // These need to be closed so that all session's reflect the fact
-                // that the parent Connection is closed.
-                for (JmsPoolSession session : loanedSessions) {
+                // Loaned sessions are those that are active in the sessionPool and have
+                // not been closed by the client before closing the connection. These need
+                // to be closed so that all session's reflect the fact that the parent
+                // Connection is closed.
+                loanedSessions.keySet().forEach(session -> {
                     try {
                         session.close();
                     } catch (Exception e) {
+                        LOG.trace("Swallowed exception when closing a loaned session: {}", session);
                     }
-                }
+                });
 
                 loanedSessions.clear();
                 idleTimeoutCheck();

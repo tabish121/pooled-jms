@@ -19,7 +19,7 @@ package org.messaginghub.pooled.jms;
 /**
  * A cache key for the session details used to locate PooledSession instances.
  */
-public final class JmsPoolSessionKey {
+final class JmsPoolSessionKey {
 
     private final boolean transacted;
     private final int ackMode;

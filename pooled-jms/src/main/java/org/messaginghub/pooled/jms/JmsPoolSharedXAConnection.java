@@ -30,11 +30,10 @@ import jakarta.transaction.SystemException;
 import jakarta.transaction.TransactionManager;
 
 /**
- * An XA-aware connection pool. When a session is created and an xa transaction
- * is active, the session will automatically be enlisted in the current
- * transaction.
+ * An XA-aware shared connection from the pool. When a session is created and an XA transaction
+ * is active, the session will automatically be enlisted in the current transaction.
  */
-public class JmsPoolSharedXAConnection extends JmsPoolSharedConnection {
+class JmsPoolSharedXAConnection extends JmsPoolSharedConnection {
 
     private final TransactionManager transactionManager;
 
