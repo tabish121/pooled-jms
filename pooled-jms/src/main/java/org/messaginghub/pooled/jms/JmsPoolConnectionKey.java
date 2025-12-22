@@ -19,7 +19,7 @@ package org.messaginghub.pooled.jms;
 /**
  * A cache key for the connection details
  */
-public final class JmsPoolConnectionKey {
+final class JmsPoolConnectionKey {
 
     private final String userName;
     private final String password;

@@ -25,11 +25,11 @@ import jakarta.jms.JMSException;
 import jakarta.jms.XASession;
 import jakarta.transaction.TransactionManager;
 
-public class JmsPoolJCAConnectionHolder extends JmsPoolSharedXAConnection {
+class JmsPoolSharedJCAConnection extends JmsPoolSharedXAConnection {
 
     private final String name;
 
-    public JmsPoolJCAConnectionHolder(Connection connection, TransactionManager transactionManager, String name) {
+    public JmsPoolSharedJCAConnection(Connection connection, TransactionManager transactionManager, String name) {
         super(connection, transactionManager);
 
         this.name = name;

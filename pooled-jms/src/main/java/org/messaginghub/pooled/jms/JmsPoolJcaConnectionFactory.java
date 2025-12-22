@@ -33,7 +33,7 @@ public class JmsPoolJcaConnectionFactory extends JmsPoolXAConnectionFactory {
     }
 
     @Override
-    protected JmsPoolJCAConnectionHolder createPooledConnection(Connection connection) {
-        return new JmsPoolJCAConnectionHolder(connection, getTransactionManager(), getName());
+    protected JmsPoolSharedJCAConnection createPooledConnection(Connection connection) {
+        return new JmsPoolSharedJCAConnection(connection, getTransactionManager(), getName());
     }
 }
