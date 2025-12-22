@@ -34,14 +34,13 @@ import jakarta.jms.TopicPublisher;
 import jakarta.jms.TopicSession;
 
 /**
- * Used to store a pooled session instance and any resources that can
- * be left open and carried along with the pooled instance such as the
- * anonymous producer used for all MessageProducer instances created
- * from this pooled session when enabled.
+ * Used to store a pooled session instance and any resources that can be left open
+ * and carried along with the pooled instance such as the anonymous producer used
+ * for all MessageProducer instances created from this pooled session when enabled.
  */
-public final class JmsPoolSessionHolder {
+public final class JmsPoolSharedSession {
 
-    private final JmsPoolConnectionHolder connection;
+    private final JmsPoolSharedConnection connection;
     private final Session session;
 
     private final boolean useAnonymousProducer;
@@ -55,7 +54,7 @@ public final class JmsPoolSessionHolder {
     private final ProducerLRUCache<JmsPoolTopicPublisher> cachedPublishers;
     private final ProducerLRUCache<JmsPoolQueueSender> cachedSenders;
 
-    public JmsPoolSessionHolder(JmsPoolConnectionHolder connection, Session session, boolean useAnonymousProducer, int namedProducerCacheSize) {
+    public JmsPoolSharedSession(JmsPoolSharedConnection connection, Session session, boolean useAnonymousProducer, int namedProducerCacheSize) {
         this.connection = connection;
         this.session = session;
         this.useAnonymousProducer = useAnonymousProducer;
@@ -257,7 +256,7 @@ public final class JmsPoolSessionHolder {
         return new JmsPoolQueueSender(jmsPoolSession, delegate, queue, refCount);
     }
 
-    public JmsPoolConnectionHolder getConnection() {
+    public JmsPoolSharedConnection getConnection() {
         return connection;
     }
 

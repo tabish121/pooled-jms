@@ -105,8 +105,8 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
     }
 
     @Override
-    protected JmsPoolXAConnectionHolder createPooledConnection(Connection connection) {
-        return new JmsPoolXAConnectionHolder(connection, getTransactionManager());
+    protected JmsPoolSharedXAConnection createPooledConnection(Connection connection) {
+        return new JmsPoolSharedXAConnection(connection, getTransactionManager());
     }
 
     @Override

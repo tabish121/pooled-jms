@@ -51,12 +51,12 @@ import jakarta.jms.TemporaryTopic;
  * that the temporary destinations of the managed Connection are purged when all references
  * to this ConnectionPool are released.
  */
-class JmsPoolConnectionHolder implements ExceptionListener {
+class JmsPoolSharedConnection implements ExceptionListener {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final AtomicBoolean started = new AtomicBoolean(false);
-    private final GenericKeyedObjectPool<JmsPoolSessionKey, JmsPoolSessionHolder> sessionPool;
+    private final GenericKeyedObjectPool<JmsPoolSessionKey, JmsPoolSharedSession> sessionPool;
     private final List<JmsPoolSession> loanedSessions = new CopyOnWriteArrayList<>();
     private final String connectionId;
 
@@ -75,7 +75,7 @@ class JmsPoolConnectionHolder implements ExceptionListener {
     private boolean faultTolerantConnection;
     private ExceptionListener connectionFactoryExceptionListener;
 
-    public JmsPoolConnectionHolder(Connection connection) {
+    public JmsPoolSharedConnection(Connection connection) {
         this.connection = connection;
         this.connectionId = connection.toString();
 
@@ -102,28 +102,28 @@ class JmsPoolConnectionHolder implements ExceptionListener {
             jmsMinorVersion = 0;
         }
 
-        final GenericKeyedObjectPoolConfig<JmsPoolSessionHolder> poolConfig = new GenericKeyedObjectPoolConfig<>();
+        final GenericKeyedObjectPoolConfig<JmsPoolSharedSession> poolConfig = new GenericKeyedObjectPoolConfig<>();
         poolConfig.setJmxEnabled(false);
         poolConfig.setTestOnBorrow(true);
 
         // Create our internal Pool of session instances.
-        sessionPool = new GenericKeyedObjectPool<JmsPoolSessionKey, JmsPoolSessionHolder>(
-            new KeyedPooledObjectFactory<JmsPoolSessionKey, JmsPoolSessionHolder>() {
+        sessionPool = new GenericKeyedObjectPool<JmsPoolSessionKey, JmsPoolSharedSession>(
+            new KeyedPooledObjectFactory<JmsPoolSessionKey, JmsPoolSharedSession>() {
 
                 @Override
-                public PooledObject<JmsPoolSessionHolder> makeObject(JmsPoolSessionKey sessionKey) throws Exception {
-                    return new DefaultPooledObject<JmsPoolSessionHolder>(
-                        new JmsPoolSessionHolder(JmsPoolConnectionHolder.this, makeSession(sessionKey), useAnonymousProducers, explicitProducerCacheSize));
+                public PooledObject<JmsPoolSharedSession> makeObject(JmsPoolSessionKey sessionKey) throws Exception {
+                    return new DefaultPooledObject<JmsPoolSharedSession>(
+                        new JmsPoolSharedSession(JmsPoolSharedConnection.this, makeSession(sessionKey), useAnonymousProducers, explicitProducerCacheSize));
                 }
 
                 @Override
-                public void destroyObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSessionHolder> pooledObject) throws Exception {
+                public void destroyObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSharedSession> pooledObject) throws Exception {
                     pooledObject.getObject().close();
                 }
 
                 @Override
-                public boolean validateObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSessionHolder> pooledObject) {
-                    JmsPoolSessionHolder sessionHolder = pooledObject.getObject();
+                public boolean validateObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSharedSession> pooledObject) {
+                    JmsPoolSharedSession sessionHolder = pooledObject.getObject();
 
                     try {
                         sessionHolder.getSession().getTransacted();
@@ -137,11 +137,11 @@ class JmsPoolConnectionHolder implements ExceptionListener {
                 }
 
                 @Override
-                public void activateObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSessionHolder> pooledObject) throws Exception {
+                public void activateObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSharedSession> pooledObject) throws Exception {
                 }
 
                 @Override
-                public void passivateObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSessionHolder> pooledObject) throws Exception {
+                public void passivateObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSharedSession> pooledObject) throws Exception {
                 }
 
             }, poolConfig
