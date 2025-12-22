@@ -96,54 +96,62 @@ public final class JmsPoolSessionHolder {
         return session;
     }
 
+    private boolean shouldCleanupProducer(JmsPoolMessageProducer producer, boolean force) {
+        // We cache anonymous producers regardless of the useAnonymousProducer
+        // setting so in either of those cases the pooled producer is not closed
+        // unless the wrapper indicates a forced closure is being requested.
+        if (!force) {
+            try {
+                // Try and test the JMS resource to validate if it is still active.
+                producer.getDelegate().getDestination();
+
+                if (!isUseAnonymousProducer() && !producer.isAnonymousProducer()) {
+                    force = producer.getRefCount().decrementAndGet() <= 0;
+                }
+            } catch (IllegalStateException jmsISE) {
+                // Delegated producer appears to be closed so remove it from pooling.
+                producer.getRefCount().decrementAndGet();
+                force = true;
+            } catch (Exception ambiguous) {
+                // Not clear that the resource is closed so we don't assume it is.
+            }
+        }
+
+        return force;
+    }
+
     public void onJmsPoolProducerClosed(JmsPoolMessageProducer producer, boolean force) throws JMSException {
         synchronized (this) {
             // We cache anonymous producers regardless of the useAnonymousProducer
             // setting so in either of those cases the pooled producer is not closed
             // unless the wrapper indicates a forced closure is being requested.
-            if (!force) {
-                try {
-                    producer.getDelegate().getDestination();
+            if (shouldCleanupProducer(producer, force)) {
+                final MessageProducer delegate = producer.getDelegate();
 
-                    if (isUseAnonymousProducer() || producer.isAnonymousProducer()) {
-                        return;
-                    } else if (producer.getRefCount().decrementAndGet() > 0) {
-                        return;
+                // Ensure that the anonymous reference are cleared of a closed producer resource or the
+                // cache is updated if enabled to remove the closed named producer.
+                if (delegate == anonymousProducer) {
+                    anonymousProducer = null;
+                } else if (delegate == anonymousPublisher) {
+                    anonymousPublisher = null;
+                } else if (delegate == anonymousSender) {
+                    anonymousSender = null;
+                }
+
+                if (!producer.isAnonymousProducer()) {
+                    if (cachedProducers != null) {
+                        cachedProducers.remove(producer.getDelegateDestination());
                     }
-                } catch (IllegalStateException jmsISE) {
-                    // Delegated producer appears to be closed so remove it from pooling.
-                    producer.getRefCount().decrementAndGet();
-                } catch (Exception ambiguous) {
-                    // Not clear that the resource is closed so we don't assume it is.
-                    return;
+                    if (cachedPublishers != null) {
+                        cachedPublishers.remove(producer.getDelegateDestination());
+                    }
+                    if (cachedSenders != null) {
+                        cachedSenders.remove(producer.getDelegateDestination());
+                    }
                 }
+
+                delegate.close();
             }
-
-            final MessageProducer delegate = producer.getDelegate();
-
-            // Ensure that the anonymous reference are cleared of a closed producer resource or the
-            // cache is updated if enabled to remove the closed named producer.
-            if (delegate == anonymousProducer) {
-                anonymousProducer = null;
-            } else if (delegate == anonymousPublisher) {
-                anonymousPublisher = null;
-            } else if (delegate == anonymousSender) {
-                anonymousSender = null;
-            }
-
-            if (!producer.isAnonymousProducer()) {
-                if (cachedProducers != null) {
-                    cachedProducers.remove(producer.getDelegateDestination());
-                }
-                if (cachedPublishers != null) {
-                    cachedPublishers.remove(producer.getDelegateDestination());
-                }
-                if (cachedSenders != null) {
-                    cachedSenders.remove(producer.getDelegateDestination());
-                }
-            }
-
-            delegate.close();
         }
     }
 
