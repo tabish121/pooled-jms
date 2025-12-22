@@ -56,6 +56,12 @@ import jakarta.jms.TopicConnectionFactory;
  * returned to a pool after use so that they can be reused later without having to undergo the cost
  * of creating them again.
  *
+ * This pooling connection factory groups connections into groups based on the user name and password
+ * used to create the connections along with a group for connections created without a user-name or a
+ * password. The configuration for max connections applies to each group of connections individually
+ * meaning to total number of connections can be greater than the configured if connections are created
+ * for multiple users.
+ *
  * <b>NOTE:</b> while this implementation does allow the creation of a collection of active consumers,
  * it does not 'pool' consumers. Pooling makes sense for connections, sessions and producers, which
  * are expensive to create and can remain idle a minimal cost. Consumers, on the other hand, are usually
@@ -222,11 +228,11 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * Sets the ConnectionFactory used to create new pooled Connections.
      * <p>
      * Updates to this value do not affect Connections that were previously created and placed
-     * into the pool.  In order to allocate new Connections based off this new ConnectionFactory
+     * into the pool. In order to allocate new Connections based off this new ConnectionFactory
      * it is first necessary to {@link #clear} the pooled Connections.
      *
      * @param factory
-     *      The factory to use to create pooled Connections.
+     *      The factory to use to create pooled Connections (cannot be null).
      */
     public void setConnectionFactory(final Object factory) {
         if (factory instanceof ConnectionFactory) {
@@ -306,11 +312,10 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     //----- Setup and Close --------------------------------------------------//
 
     /**
-     * Starts the Connection pool.
+     * Starts the Connection pool if it was previously stopped.
      * <p>
-     * If configured to do so this method will attempt to create an initial Connection to place
-     * into the pool using the default {@link ConnectionFactory#createConnection()} from the configured
-     * provider {@link ConnectionFactory}.
+     * By default the connection factory is created in the started state and this method does not need to
+     * be called when the factory is allocated.
      */
     public void start() {
         LOG.debug("Starting the JmsPoolConnectionFactory.");
@@ -321,7 +326,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * Stops the pool from providing any new connections and closes all pooled Connections.
      * <p>
      * This method stops services from the JMS Connection Pool closing down any Connections in
-     * the pool regardless of them being loaned out at the time.  The pool cannot be restarted
+     * the pool regardless of them being loaned out at the time. The pool cannot be restarted
      * after a call to stop.
      */
     public void stop() {
@@ -343,7 +348,9 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * Clears all connections from the pool. Each connection that is currently in the pool is
      * closed and removed from the pool. A new connection will be created on the next call to
      * {@link #createConnection} if the pool has not been stopped. Care should be taken when
-     * using this method as Connections that are in use by the client will be closed.
+     * using this method as Connections that are in use by the client will be closed. It is also
+     * possible for connections to remain in the pool after this method returns if it raced with
+     * other threads calling a {@link #createConnection()} variant.
      */
     public void clear() {
         if (!stopped.get()) {
@@ -524,7 +531,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return true if a pooled Session will use only a single anonymous message producer instance.
      */
     public boolean isUseAnonymousProducers() {
-        return this.useAnonymousProducers;
+        return useAnonymousProducers;
     }
 
     /**
@@ -545,7 +552,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return the current explicit producer cache size.
      */
     public int getExplicitProducerCacheSize() {
-        return this.explicitProducerCacheSize;
+        return explicitProducerCacheSize;
     }
 
     /**
