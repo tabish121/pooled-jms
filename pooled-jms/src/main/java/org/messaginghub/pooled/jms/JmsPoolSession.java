@@ -18,8 +18,10 @@ package org.messaginghub.pooled.jms;
 
 import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.transaction.xa.XAResource;
 
@@ -58,16 +60,18 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+    private static final AtomicIntegerFieldUpdater<JmsPoolSession> CLOSED_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(JmsPoolSession.class, "closed");
+
     private final JmsPoolSessionKey key;
     private final KeyedObjectPool<JmsPoolSessionKey, JmsPoolSessionHolder> sessionPool;
-    private final CopyOnWriteArrayList<JmsPoolMessageProducer> producers = new CopyOnWriteArrayList<>();
-    private final CopyOnWriteArrayList<JmsPoolMessageConsumer> consumers = new CopyOnWriteArrayList<>();
-    private final CopyOnWriteArrayList<JmsPoolQueueBrowser> browsers = new CopyOnWriteArrayList<>();
-    private final CopyOnWriteArrayList<JmsPoolSessionEventListener> sessionEventListeners = new CopyOnWriteArrayList<>();
-    private final AtomicBoolean closed = new AtomicBoolean();
+    private final Map<AutoCloseable, AutoCloseable> resources = new ConcurrentHashMap<>();
+    private final Map<JmsPoolSessionEventListener, JmsPoolSessionEventListener> sessionEventListeners = new ConcurrentHashMap<>();
+
+    private volatile int closed;
 
     private JmsPoolSessionHolder sessionHolder;
-    private boolean transactional = true;
+    private boolean transactional;
     private boolean ignoreClose;
     private boolean isXa;
 
@@ -86,7 +90,7 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
     }
 
     public void internalClose(boolean forceInvalidate) throws JMSException {
-        if (closed.compareAndSet(false, true)) {
+        if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
             final boolean invalidate = cleanupSession() || forceInvalidate;
 
             if (invalidate) {
@@ -120,96 +124,69 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
     }
 
     private boolean cleanupSession() {
-        Exception cleanupError = null;
+        final AtomicReference<Exception> cleanupError = new AtomicReference<>();
 
         try {
             getInternalSession().setMessageListener(null);
         } catch (JMSException e) {
-            cleanupError = cleanupError == null ? e : cleanupError;
+            cleanupError.compareAndSet(null, e);
         }
 
-        // Close any consumers, producers and browsers that may have been created.
-        for (MessageConsumer consumer : consumers) {
+        resources.keySet().forEach(resource -> {
             try {
-                consumer.close();
-            } catch (JMSException e) {
-                LOG.trace("Caught exception trying close a consumer, will invalidate. " + e, e);
-                cleanupError = cleanupError == null ? e : cleanupError;
+                resource.close();
+            } catch (Exception e) {
+                LOG.trace("Caught exception trying close a session resource:{}, will invalidate. " + e.getMessage(), resource, e);
+                cleanupError.compareAndSet(null, e);
             }
-        }
-
-        for (QueueBrowser browser : browsers) {
-            try {
-                browser.close();
-            } catch (JMSException e) {
-                LOG.trace("Caught exception trying close a browser, will invalidate. " + e, e);
-                cleanupError = cleanupError == null ? e : cleanupError;
-            }
-        }
-
-        for (MessageProducer producer : producers) {
-            try {
-                producer.close();
-            } catch (JMSException e) {
-                LOG.trace("Caught exception trying close a producer, will invalidate. " + e, e);
-                cleanupError = cleanupError == null ? e : cleanupError;
-            }
-        }
+        });
 
         if (transactional && !isXa) {
             try {
                 getInternalSession().rollback();
             } catch (JMSException e) {
                 LOG.warn("Caught exception trying rollback() when putting session back into the pool, will invalidate. " + e, e);
-                cleanupError = cleanupError == null ? e : cleanupError;
+                cleanupError.compareAndSet(null, e);
             }
         }
 
-        producers.clear();
-        consumers.clear();
-        browsers.clear();
-
-        for (JmsPoolSessionEventListener listener : this.sessionEventListeners) {
+        sessionEventListeners.keySet().forEach(listener -> {
             try {
                 listener.onSessionClosed(this);
             } catch (Exception e) {
-                cleanupError = cleanupError == null ? e : cleanupError;
+                cleanupError.compareAndSet(null, e);
             }
-        }
+        });
 
-        if (cleanupError != null) {
+        if (cleanupError.get() != null) {
             LOG.warn("Caught exception trying close() when putting session back into the pool, will invalidate. " + cleanupError, cleanupError);
         }
 
-        return cleanupError != null;
+        return cleanupError.get() != null;
     }
 
     //----- Destination factory methods --------------------------------------//
 
     @Override
     public TemporaryQueue createTemporaryQueue() throws JMSException {
-        TemporaryQueue result;
-
-        result = getInternalSession().createTemporaryQueue();
+        final TemporaryQueue result = getInternalSession().createTemporaryQueue();
 
         // Notify all of the listeners of the created temporary Queue.
-        for (JmsPoolSessionEventListener listener : this.sessionEventListeners) {
+        sessionEventListeners.keySet().forEach(listener -> {
             listener.onTemporaryQueueCreate(result);
-        }
+        });
 
         return result;
     }
 
     @Override
     public TemporaryTopic createTemporaryTopic() throws JMSException {
-        TemporaryTopic result;
-
-        result = getInternalSession().createTemporaryTopic();
+        final TemporaryTopic result = getInternalSession().createTemporaryTopic();
 
         // Notify all of the listeners of the created temporary Topic.
-        for (JmsPoolSessionEventListener listener : this.sessionEventListeners) {
+        sessionEventListeners.keySet().forEach(listener -> {
             listener.onTemporaryTopicCreate(result);
-        }
+        });
 
         return result;
     }
@@ -450,22 +427,22 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
 
     @Override
     public MessageProducer createProducer(Destination destination) throws JMSException {
-        JmsPoolMessageProducer result = safeGetSessionHolder().getOrCreateProducer(this, destination);
-        producers.add(result);
+        final JmsPoolMessageProducer result = safeGetSessionHolder().getOrCreateProducer(this, destination);
+        resources.put(result, result);
         return result;
     }
 
     @Override
     public QueueSender createSender(Queue queue) throws JMSException {
-        JmsPoolQueueSender result = safeGetSessionHolder().getOrCreateSender(this, queue);
-        producers.add(result);
+        final JmsPoolQueueSender result = safeGetSessionHolder().getOrCreateSender(this, queue);
+        resources.put(result, result);
         return result;
     }
 
     @Override
     public TopicPublisher createPublisher(Topic topic) throws JMSException {
-        JmsPoolTopicPublisher result = safeGetSessionHolder().getOrCreatePublisher(this, topic);
-        producers.add(result);
+        final JmsPoolTopicPublisher result = safeGetSessionHolder().getOrCreatePublisher(this, topic);
+        resources.put(result, result);
         return result;
     }
 
@@ -473,9 +450,7 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
 
     public void addSessionEventListener(JmsPoolSessionEventListener listener) throws JMSException {
         checkClosed();
-        if (!sessionEventListeners.contains(listener)) {
-            sessionEventListeners.add(listener);
-        }
+        sessionEventListeners.put(listener, listener);
     }
 
     public Session getInternalSession() throws JMSException {
@@ -515,7 +490,7 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
      * 		the consumer which is being closed.
      */
     protected void onConsumerClose(JmsPoolMessageConsumer consumer) {
-        consumers.remove(consumer);
+        resources.remove(consumer);
     }
 
     /**
@@ -528,7 +503,7 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
      * 		the browser which is being closed.
      */
     protected void onQueueBrowserClose(JmsPoolQueueBrowser browser) {
-        browsers.remove(browser);
+        resources.remove(browser);
     }
 
     /**
@@ -545,7 +520,7 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
      * @throws JMSException if an error occurs while closing the provider MessageProducer.
      */
     protected void onMessageProducerClosed(JmsPoolMessageProducer producer, boolean force) throws JMSException {
-        producers.remove(producer);
+        resources.remove(producer);
         safeGetSessionHolder().onJmsPoolProducerClosed(producer, force);
     }
 
@@ -560,37 +535,38 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
     }
 
     private void checkClosed() throws IllegalStateException {
-        if (closed.get()) {
-            throw new IllegalStateException("Session is closed");
+        if (closed != 0) {
+            throw new IllegalStateException("Session has already been closed");
         }
     }
 
     private QueueBrowser addQueueBrowser(QueueBrowser browser) {
         browser = new JmsPoolQueueBrowser(this, browser);
-        browsers.add((JmsPoolQueueBrowser) browser);
+        resources.put(browser, browser);
         return browser;
     }
 
     private MessageConsumer addConsumer(MessageConsumer consumer) {
         consumer = new JmsPoolMessageConsumer(this, consumer);
-        consumers.add((JmsPoolMessageConsumer) consumer);
+        resources.put(consumer, consumer);
         return consumer;
     }
 
     private TopicSubscriber addTopicSubscriber(TopicSubscriber subscriber) {
         subscriber = new JmsPoolTopicSubscriber(this, subscriber);
-        consumers.add((JmsPoolMessageConsumer) subscriber);
+        resources.put(subscriber, subscriber);
         return subscriber;
     }
 
     private QueueReceiver addQueueReceiver(QueueReceiver receiver) {
         receiver = new JmsPoolQueueReceiver(this, receiver);
-        consumers.add((JmsPoolMessageConsumer) receiver);
+        resources.put(receiver, receiver);
         return receiver;
     }
 
     private JmsPoolSessionHolder safeGetSessionHolder() throws JMSException {
-        JmsPoolSessionHolder sessionHolder = this.sessionHolder;
+        final JmsPoolSessionHolder sessionHolder = this.sessionHolder;
+
         if (sessionHolder == null) {
             throw new IllegalStateException("The session has already been closed");
         }
