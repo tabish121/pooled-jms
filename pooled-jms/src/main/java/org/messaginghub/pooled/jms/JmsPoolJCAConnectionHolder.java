@@ -25,7 +25,7 @@ import jakarta.jms.JMSException;
 import jakarta.jms.XASession;
 import jakarta.transaction.TransactionManager;
 
-public class JmsPoolJCAConnectionHolder extends JmsPoolXAConnectionHolder {
+public class JmsPoolJCAConnectionHolder extends JmsPoolSharedXAConnection {
 
     private final String name;
 

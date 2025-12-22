@@ -34,11 +34,11 @@ import jakarta.transaction.TransactionManager;
  * is active, the session will automatically be enlisted in the current
  * transaction.
  */
-public class JmsPoolXAConnectionHolder extends JmsPoolConnectionHolder {
+public class JmsPoolSharedXAConnection extends JmsPoolSharedConnection {
 
     private final TransactionManager transactionManager;
 
-    public JmsPoolXAConnectionHolder(Connection connection, TransactionManager transactionManager) {
+    public JmsPoolSharedXAConnection(Connection connection, TransactionManager transactionManager) {
         super(connection);
 
         this.transactionManager = transactionManager;

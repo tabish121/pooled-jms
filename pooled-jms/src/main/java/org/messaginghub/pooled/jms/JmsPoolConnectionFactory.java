@@ -99,7 +99,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
 
     protected final AtomicBoolean stopped = new AtomicBoolean(false);
 
-    private GenericKeyedObjectPool<JmsPoolConnectionKey, JmsPoolConnectionHolder> connectionsPool;
+    private GenericKeyedObjectPool<JmsPoolConnectionKey, JmsPoolSharedConnection> connectionsPool;
 
     protected Object connectionFactory;
 
@@ -114,19 +114,19 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     private boolean faultTolerantConnections = DEFAULT_FAULT_TOLERANT_CONNECTIONS;
 
     // Temporary value used to always fetch the result of makeObject.
-    private final AtomicReference<JmsPoolConnectionHolder> mostRecentlyCreated = new AtomicReference<JmsPoolConnectionHolder>(null);
+    private final AtomicReference<JmsPoolSharedConnection> mostRecentlyCreated = new AtomicReference<JmsPoolSharedConnection>(null);
 
     public void initConnectionsPool() {
         if (this.connectionsPool == null) {
-            final GenericKeyedObjectPoolConfig<JmsPoolConnectionHolder> poolConfig = new GenericKeyedObjectPoolConfig<>();
+            final GenericKeyedObjectPoolConfig<JmsPoolSharedConnection> poolConfig = new GenericKeyedObjectPoolConfig<>();
             poolConfig.setJmxEnabled(false);
-            this.connectionsPool = new GenericKeyedObjectPool<JmsPoolConnectionKey, JmsPoolConnectionHolder>(
-                new KeyedPooledObjectFactory<JmsPoolConnectionKey, JmsPoolConnectionHolder>() {
+            this.connectionsPool = new GenericKeyedObjectPool<JmsPoolConnectionKey, JmsPoolSharedConnection>(
+                new KeyedPooledObjectFactory<JmsPoolConnectionKey, JmsPoolSharedConnection>() {
                     @Override
-                    public PooledObject<JmsPoolConnectionHolder> makeObject(JmsPoolConnectionKey connectionKey) throws Exception {
+                    public PooledObject<JmsPoolSharedConnection> makeObject(JmsPoolConnectionKey connectionKey) throws Exception {
                         Connection delegate = createProviderConnection(connectionKey);
 
-                        JmsPoolConnectionHolder connection = createPooledConnection(delegate);
+                        JmsPoolSharedConnection connection = createPooledConnection(delegate);
                         connection.setIdleTimeout(getConnectionIdleTimeout());
                         connection.setMaxSessionsPerConnection(getMaxSessionsPerConnection());
                         connection.setMaxIdleSessionsPerConnection(
@@ -143,12 +143,12 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
 
                         JmsPoolConnectionFactory.this.mostRecentlyCreated.set(connection);
 
-                        return new DefaultPooledObject<JmsPoolConnectionHolder>(connection);
+                        return new DefaultPooledObject<JmsPoolSharedConnection>(connection);
                     }
 
                     @Override
-                    public void destroyObject(JmsPoolConnectionKey connectionKey, PooledObject<JmsPoolConnectionHolder> pooledObject) throws Exception {
-                        JmsPoolConnectionHolder connection = pooledObject.getObject();
+                    public void destroyObject(JmsPoolConnectionKey connectionKey, PooledObject<JmsPoolSharedConnection> pooledObject) throws Exception {
+                        JmsPoolSharedConnection connection = pooledObject.getObject();
                         try {
                             LOG.trace("Destroying connection: {}", connection);
                             connection.close();
@@ -158,8 +158,8 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
                     }
 
                     @Override
-                    public boolean validateObject(JmsPoolConnectionKey connectionKey, PooledObject<JmsPoolConnectionHolder> pooledObject) {
-                        JmsPoolConnectionHolder connection = pooledObject.getObject();
+                    public boolean validateObject(JmsPoolConnectionKey connectionKey, PooledObject<JmsPoolSharedConnection> pooledObject) {
+                        JmsPoolSharedConnection connection = pooledObject.getObject();
                         if (connection == null || connection.idleTimeoutCheck() || connection.isClosed()) {
                             LOG.trace("Connection has expired or was closed: {} and will be destroyed", connection);
                             return false;
@@ -179,11 +179,11 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
                     }
 
                     @Override
-                    public void activateObject(JmsPoolConnectionKey connectionKey, PooledObject<JmsPoolConnectionHolder> pooledObject) throws Exception {
+                    public void activateObject(JmsPoolConnectionKey connectionKey, PooledObject<JmsPoolSharedConnection> pooledObject) throws Exception {
                     }
 
                     @Override
-                    public void passivateObject(JmsPoolConnectionKey connectionKey, PooledObject<JmsPoolConnectionHolder> pooledObject) throws Exception {
+                    public void passivateObject(JmsPoolConnectionKey connectionKey, PooledObject<JmsPoolSharedConnection> pooledObject) throws Exception {
                     }
 
                 }, poolConfig);
@@ -199,10 +199,10 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
             this.connectionsPool.setTestWhileIdle(true);
 
             // Don't use the default eviction policy as it ignores our own idle timeout option.
-            final EvictionPolicy<JmsPoolConnectionHolder> policy = new EvictionPolicy<JmsPoolConnectionHolder>() {
+            final EvictionPolicy<JmsPoolSharedConnection> policy = new EvictionPolicy<JmsPoolSharedConnection>() {
 
                 @Override
-                public boolean evict(EvictionConfig config, PooledObject<JmsPoolConnectionHolder> underTest, int idleCount) {
+                public boolean evict(EvictionConfig config, PooledObject<JmsPoolSharedConnection> underTest, int idleCount) {
                     return false; // We use the validation of the instance to check for idle.
                 }
             };
@@ -693,7 +693,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *
      * @return this factories pool of ConnectionPool instances.
      */
-    private GenericKeyedObjectPool<JmsPoolConnectionKey, JmsPoolConnectionHolder> getConnectionsPool() {
+    private GenericKeyedObjectPool<JmsPoolConnectionKey, JmsPoolSharedConnection> getConnectionsPool() {
         initConnectionsPool();
         return connectionsPool;
     }
@@ -707,8 +707,8 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *
      * @return instance of a new ConnectionPool.
      */
-    protected JmsPoolConnectionHolder createPooledConnection(Connection connection) {
-        return new JmsPoolConnectionHolder(connection);
+    protected JmsPoolSharedConnection createPooledConnection(Connection connection) {
+        return new JmsPoolSharedConnection(connection);
     }
 
     /**
@@ -716,11 +716,11 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * create connection such as one that provides support for XA Transactions.
      *
      * @param connection
-     * 		The {@link JmsPoolConnectionHolder} to wrap.
+     * 		The {@link JmsPoolSharedConnection} to wrap.
      *
-     * @return a new {@link JmsPoolConnection} that wraps the given {@link JmsPoolConnectionHolder}
+     * @return a new {@link JmsPoolConnection} that wraps the given {@link JmsPoolSharedConnection}
      */
-    protected JmsPoolConnection newPooledConnectionWrapper(JmsPoolConnectionHolder connection) {
+    protected JmsPoolConnection newPooledConnectionWrapper(JmsPoolSharedConnection connection) {
         return new JmsPoolConnection(connection);
     }
 
@@ -798,7 +798,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
             throw new IllegalStateException("No ConnectionFactory instance has been configured");
         }
 
-        JmsPoolConnectionHolder connection = null;
+        JmsPoolSharedConnection connection = null;
         JmsPoolConnectionKey key = new JmsPoolConnectionKey(userName, password);
 
         // This will either return an existing non-expired ConnectionPool or it

@@ -58,7 +58,7 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, Auto
     private static final AtomicIntegerFieldUpdater<JmsPoolConnection> CLOSED_UPDATER =
         AtomicIntegerFieldUpdater.newUpdater(JmsPoolConnection.class, "closed");
 
-    protected JmsPoolConnectionHolder connection;
+    protected JmsPoolSharedConnection connection;
     protected volatile ExceptionListener connectionExceptionListener;
 
     private volatile int closed;
@@ -76,7 +76,7 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, Auto
      * @param pool
      *      The connection and pool manager backing this proxy connection object.
      */
-    public JmsPoolConnection(JmsPoolConnectionHolder pool) {
+    public JmsPoolConnection(JmsPoolSharedConnection pool) {
         this.connection = pool;
         this.connection.addWrapperExceptionListener(callbacks);
     }
