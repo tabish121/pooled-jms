@@ -25,7 +25,7 @@ import jakarta.jms.Topic;
 import jakarta.jms.TopicPublisher;
 
 /**
- * A {@link TopicPublisher} instance that is created and managed by a PooledConnection.
+ * A {@link TopicPublisher} instance that is created and managed by a pooled session.
  */
 public class JmsPoolTopicPublisher extends JmsPoolMessageProducer implements TopicPublisher, AutoCloseable {
 

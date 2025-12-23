@@ -16,7 +16,7 @@
  */
 package org.messaginghub.pooled.jms;
 
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
@@ -29,9 +29,13 @@ import jakarta.jms.MessageListener;
  */
 public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
 
+    private static final AtomicIntegerFieldUpdater<JmsPoolMessageConsumer> CLOSED_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(JmsPoolMessageConsumer.class, "closed");
+
     private final JmsPoolSession session;
     private final MessageConsumer messageConsumer;
-    private final AtomicBoolean closed = new AtomicBoolean();
+
+    private volatile int closed;
 
     /**
      * Wraps the message consumer.
@@ -49,7 +53,7 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
     @Override
     public void close() throws JMSException {
         // ensure session removes consumer from it's list of managed resources.
-        if (closed.compareAndSet(false, true)) {
+        if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
             session.onConsumerClose(this);
             messageConsumer.close();
         }
@@ -93,7 +97,7 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
 
     @Override
     public String toString() {
-        return getClass().getSimpleName() + " { " + messageConsumer + " }";
+        return getClass().getSimpleName() + " { " + getDelegate() + " }";
     }
 
     public MessageConsumer getMessageConsumer() throws JMSException {
@@ -104,7 +108,7 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
     //----- Internal support methods -----------------------------------------//
 
     protected void checkClosed() throws JMSException {
-        if (closed.get()) {
+        if (closed != 0) {
             throw new IllegalStateException("The MessageConsumer is closed");
         }
     }

@@ -16,8 +16,8 @@
  */
 package org.messaginghub.pooled.jms;
 
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import jakarta.jms.CompletionListener;
 import jakarta.jms.Destination;
@@ -32,14 +32,17 @@ import jakarta.jms.MessageProducer;
  */
 public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
 
+    private static final AtomicIntegerFieldUpdater<JmsPoolMessageProducer> CLOSED_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(JmsPoolMessageProducer.class, "closed");
+
     private final JmsPoolSession session;
     private final MessageProducer messageProducer;
     private final Destination destination;
 
     private final AtomicInteger refCount;
     private final boolean anonymousProducer;
-    private final AtomicBoolean closed = new AtomicBoolean(false);
 
+    private volatile int closed;
     private int deliveryMode;
     private boolean disableMessageID;
     private boolean disableMessageTimestamp;
@@ -154,8 +157,8 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
         // Only one thread can use the producer at a time to allow for dynamic configuration
         // changes to match what's been configured here.
         synchronized (messageProducer) {
-
             long oldDelayValue = 0;
+            
             if (deliveryDelay != 0 && session.isJMSVersionSupported(2, 0)) {
                 oldDelayValue = messageProducer.getDeliveryDelay();
                 try {
@@ -210,7 +213,7 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
 
                 throw jmsISE;
             } finally {
-                if (!closed.get() && deliveryDelay != 0 && session.isJMSVersionSupported(2, 0)) {
+                if (!isClosed() && deliveryDelay != 0 && session.isJMSVersionSupported(2, 0)) {
                     try {
                         messageProducer.setDeliveryDelay(oldDelayValue);
                     } catch (IllegalStateException jmsISE) {
@@ -315,6 +318,13 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
         return getClass().getSimpleName() + " { " + messageProducer + " }";
     }
 
+    /**
+     * Returns the {@link MessageProducer} instance that this wrapper delegates to.
+     *
+     * @return the JMS {@link MessageProducer} that this pooled wrapper delegates to.
+     *
+     * @throws JMSException if the producer has already been closed.
+     */
     public MessageProducer getMessageProducer() throws JMSException {
         checkClosed();
         return messageProducer;
@@ -325,39 +335,43 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
     /**
      * @return is this {@link MessageProducer} wrapper an anonymous variant.
      */
-    public boolean isAnonymousProducer() {
+    boolean isAnonymousProducer() {
         return anonymousProducer;
     }
 
     /**
      * @return the reference counter used to manage this wrapper's lifetime.
      */
-    public AtomicInteger getRefCount() {
+    AtomicInteger getRefCount() {
         return refCount;
     }
 
     /**
      * @return the underlying {@link MessageProducer} that this wrapper object is a proxy to.
      */
-    public MessageProducer getDelegate() {
+    MessageProducer getDelegate() {
         return messageProducer;
     }
 
     /**
      * @return the underlying Destination that this wrapper object applies to the delegate {@link MessageProducer}.
      */
-    public Destination getDelegateDestination() {
+    Destination getDelegateDestination() {
         return destination;
     }
 
     private void doClose(boolean force) throws JMSException {
-        if (closed.compareAndSet(false, true)) {
+        if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
             session.onMessageProducerClosed(this, force);
         }
     }
 
-    protected void checkClosed() throws IllegalStateException {
-        if (closed.get()) {
+    private boolean isClosed() {
+        return closed != 0;
+    }
+
+    private void checkClosed() throws IllegalStateException {
+        if (isClosed()) {
             throw new IllegalStateException("This message producer has been closed.");
         }
     }

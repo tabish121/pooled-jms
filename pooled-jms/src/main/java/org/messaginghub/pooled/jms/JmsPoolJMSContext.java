@@ -19,6 +19,8 @@ package org.messaginghub.pooled.jms;
 import java.io.Serializable;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
+
 import jakarta.jms.BytesMessage;
 import jakarta.jms.Connection;
 import jakarta.jms.ConnectionMetaData;
@@ -42,21 +44,21 @@ import jakarta.jms.TemporaryTopic;
 import jakarta.jms.TextMessage;
 import jakarta.jms.Topic;
 
-import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
-
 /**
  * JMSContext implementation that wraps a JmsPoolConnection
  */
 public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
+
+    public static boolean DEFAULT_JMS_CONTEXT_AUTO_START = true;
 
     protected final JmsPoolConnection connection;
 
     private final AtomicLong connectionRefCount;
     private final int sessionMode;
 
-    private JmsPoolSession session;
+    private volatile JmsPoolSession session;
     private JmsPoolMessageProducer sharedProducer;
-    private boolean autoStart = true;
+    private boolean autoStart = DEFAULT_JMS_CONTEXT_AUTO_START;
 
     public JmsPoolJMSContext(JmsPoolConnection connection, int sessionMode) {
         this(connection, sessionMode, new AtomicLong(1));

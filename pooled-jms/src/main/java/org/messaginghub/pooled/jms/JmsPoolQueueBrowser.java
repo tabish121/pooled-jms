@@ -17,7 +17,7 @@
 package org.messaginghub.pooled.jms;
 
 import java.util.Enumeration;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
@@ -29,10 +29,12 @@ import jakarta.jms.QueueBrowser;
  */
 public class JmsPoolQueueBrowser implements QueueBrowser, AutoCloseable {
 
-    private final AtomicBoolean closed = new AtomicBoolean();
+    private static final AtomicIntegerFieldUpdater<JmsPoolQueueBrowser> CLOSED_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(JmsPoolQueueBrowser.class, "closed");
 
     private final JmsPoolSession session;
     private final QueueBrowser delegate;
+    private volatile int closed;
 
     /**
      * Wraps the QueueBrowser.
@@ -67,7 +69,7 @@ public class JmsPoolQueueBrowser implements QueueBrowser, AutoCloseable {
 
     @Override
     public void close() throws JMSException {
-        if (closed.compareAndSet(false, true)) {
+        if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
             // ensure session removes browser from it's list of managed resources.
             session.onQueueBrowserClose(this);
             delegate.close();
@@ -76,7 +78,7 @@ public class JmsPoolQueueBrowser implements QueueBrowser, AutoCloseable {
 
     @Override
     public String toString() {
-        return getClass().getSimpleName() + " { " + delegate + " }";
+        return getClass().getSimpleName() + " { " + getDelegate() + " }";
     }
 
     public QueueBrowser getQueueBrowser() throws JMSException {
@@ -84,8 +86,15 @@ public class JmsPoolQueueBrowser implements QueueBrowser, AutoCloseable {
         return delegate;
     }
 
+    /**
+     * @return the underlying {@link QueueBrowser} that this wrapper object is a proxy to.
+     */
+    QueueBrowser getDelegate() {
+        return delegate;
+    }
+
     private void checkClosed() throws IllegalStateException {
-        if (closed.get()) {
+        if (closed != 0) {
             throw new IllegalStateException("The QueueBrowser is closed");
         }
     }

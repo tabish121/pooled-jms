@@ -40,7 +40,7 @@ import jakarta.jms.XAJMSContext;
 import jakarta.transaction.TransactionManager;
 
 /**
- * A pooled connection factory that automatically enlists sessions in the
+ * A pooled {@link XAConnectionFactory} that automatically enlists sessions in the
  * current active XA transaction if any.
  */
 public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory implements ObjectFactory, Serializable, XAConnectionFactory {
