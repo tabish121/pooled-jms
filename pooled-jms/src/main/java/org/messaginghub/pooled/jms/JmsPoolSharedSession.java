@@ -16,7 +16,10 @@
  */
 package org.messaginghub.pooled.jms;
 
+import java.util.AbstractMap;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.messaginghub.pooled.jms.util.LRUCache;
@@ -48,30 +51,28 @@ final class JmsPoolSharedSession {
     private final Session session;
 
     private final boolean useAnonymousProducer;
-    private final int explicitProducerCacheSize;
 
     private volatile MessageProducer anonymousProducer;
     private volatile TopicPublisher anonymousPublisher;
     private volatile QueueSender anonymousSender;
 
-    private final ProducerLRUCache<JmsPoolMessageProducer> cachedProducers;
-    private final ProducerLRUCache<JmsPoolTopicPublisher> cachedPublishers;
-    private final ProducerLRUCache<JmsPoolQueueSender> cachedSenders;
+    private final Map<Destination, JmsPoolMessageProducer> cachedProducers;
+    private final Map<Destination, JmsPoolTopicPublisher> cachedPublishers;
+    private final Map<Destination, JmsPoolQueueSender> cachedSenders;
 
     public JmsPoolSharedSession(JmsPoolSharedConnection connection, Session session, boolean useAnonymousProducer, int namedProducerCacheSize) {
         this.connection = connection;
         this.session = session;
         this.useAnonymousProducer = useAnonymousProducer;
-        this.explicitProducerCacheSize = namedProducerCacheSize;
 
         if (!useAnonymousProducer && namedProducerCacheSize > 0) {
             cachedProducers = new ProducerLRUCache<>(namedProducerCacheSize);
             cachedPublishers = new ProducerLRUCache<>(namedProducerCacheSize);
             cachedSenders = new ProducerLRUCache<>(namedProducerCacheSize);
         } else {
-            cachedProducers = null;
-            cachedPublishers = null;
-            cachedSenders = null;
+            cachedProducers = DiscardingMap.getInstance();
+            cachedPublishers = DiscardingMap.getInstance();
+            cachedSenders = DiscardingMap.getInstance();
         }
     }
 
@@ -82,16 +83,9 @@ final class JmsPoolSharedSession {
             anonymousProducer = null;
             anonymousPublisher = null;
             anonymousSender = null;
-
-            if (cachedProducers != null) {
-                cachedProducers.clear();
-            }
-            if (cachedPublishers != null) {
-                cachedPublishers.clear();
-            }
-            if (cachedSenders != null) {
-                cachedSenders.clear();
-            }
+            cachedProducers.clear();
+            cachedPublishers.clear();
+            cachedSenders.clear();
         }
     }
 
@@ -133,23 +127,24 @@ final class JmsPoolSharedSession {
 
                 // Ensure that the anonymous reference are cleared of a closed producer resource or the
                 // cache is updated if enabled to remove the closed named producer.
-                if (delegate == anonymousProducer) {
-                    anonymousProducer = null;
-                } else if (delegate == anonymousPublisher) {
-                    anonymousPublisher = null;
-                } else if (delegate == anonymousSender) {
-                    anonymousSender = null;
-                }
 
-                if (!producer.isAnonymousProducer()) {
-                    if (cachedProducers != null) {
-                        cachedProducers.remove(producer.getDelegateDestination());
-                    }
-                    if (cachedPublishers != null) {
+                if (producer.isTopicPublisher()) {
+                    if (delegate == anonymousPublisher) {
+                        anonymousPublisher = null;
+                    } else {
                         cachedPublishers.remove(producer.getDelegateDestination());
                     }
-                    if (cachedSenders != null) {
+                } else if (producer.isQueueSender()) {
+                    if (delegate == anonymousSender) {
+                        anonymousSender = null;
+                    } else {
                         cachedSenders.remove(producer.getDelegateDestination());
+                    }
+                } else {
+                    if (delegate == anonymousProducer) {
+                        anonymousProducer = null;
+                    } else {
+                        cachedProducers.remove(producer.getDelegateDestination());
                     }
                 }
 
@@ -167,13 +162,13 @@ final class JmsPoolSharedSession {
                 delegate = anonymousProducer;
                 if (delegate == null) {
                     delegate = anonymousProducer = session.createProducer(null);
-                    refCount = new AtomicInteger(0);
+                    refCount = new AtomicInteger(0); // Anonymous instance is not reference counted
                 }
-            } else if (explicitProducerCacheSize > 0) {
+            } else {
                 JmsPoolMessageProducer cached = cachedProducers.get(destination);
                 if (cached == null) {
                     delegate = session.createProducer(destination);
-                    refCount = new AtomicInteger(1);
+                    refCount = new AtomicInteger(1); // Cached instance is held as a reference until evicted
                     cached = new JmsPoolMessageProducer(jmsPoolSession, delegate, destination, refCount);
 
                     cachedProducers.put(destination, cached);
@@ -183,9 +178,6 @@ final class JmsPoolSharedSession {
                 }
 
                 refCount.incrementAndGet();
-            } else {
-                delegate = session.createProducer(destination);
-                refCount = new AtomicInteger(1);
             }
         }
 
@@ -201,13 +193,13 @@ final class JmsPoolSharedSession {
                 delegate = anonymousPublisher;
                 if (delegate == null) {
                     delegate = anonymousPublisher = ((TopicSession) session).createPublisher(null);
-                    refCount = new AtomicInteger(0);
+                    refCount = new AtomicInteger(0); // Anonymous instance is not reference counted
                 }
-            } else if (explicitProducerCacheSize > 0) {
+            } else {
                 JmsPoolTopicPublisher cached = cachedPublishers.get(topic);
                 if (cached == null) {
                     delegate = ((TopicSession) session).createPublisher(topic);
-                    refCount = new AtomicInteger(1);
+                    refCount = new AtomicInteger(1); // Cached instance is held as a reference until evicted
                     cached = new JmsPoolTopicPublisher(jmsPoolSession, delegate, topic, refCount);
 
                     cachedPublishers.put(topic, cached);
@@ -217,9 +209,6 @@ final class JmsPoolSharedSession {
                 }
 
                 refCount.incrementAndGet();
-            } else {
-                delegate = ((TopicSession) session).createPublisher(topic);
-                refCount = new AtomicInteger(1);
             }
         }
 
@@ -235,13 +224,13 @@ final class JmsPoolSharedSession {
                 delegate = anonymousSender;
                 if (delegate == null) {
                     delegate = anonymousSender = ((QueueSession) session).createSender(null);
-                    refCount = new AtomicInteger(0);
+                    refCount = new AtomicInteger(0); // Anonymous instance is not reference counted
                 }
-            } else if (explicitProducerCacheSize > 0) {
+            } else {
                 JmsPoolQueueSender cached = cachedSenders.get(queue);
                 if (cached == null) {
                     delegate = ((QueueSession) session).createSender(queue);
-                    refCount = new AtomicInteger(1);
+                    refCount = new AtomicInteger(1); // Cached instance is held as a reference until evicted
                     cached = new JmsPoolQueueSender(jmsPoolSession, delegate, queue, refCount);
 
                     cachedSenders.put(queue, cached);
@@ -251,9 +240,6 @@ final class JmsPoolSharedSession {
                 }
 
                 refCount.incrementAndGet();
-            } else {
-                delegate = ((QueueSession) session).createSender(queue);
-                refCount = new AtomicInteger(1);
             }
         }
 
@@ -283,10 +269,47 @@ final class JmsPoolSharedSession {
 
         @Override
         protected void onCacheEviction(Map.Entry<Destination, E> eldest) {
-             JmsPoolMessageProducer producer = (JmsPoolMessageProducer) eldest.getValue();
-             try {
-                 producer.close();
-             } catch (JMSException jmsEx) {}
+            // Closes the cache's reference to the producer which will close it fully
+            // if the producer is not reference currently by any other client code.
+            JmsPoolMessageProducer producer = (JmsPoolMessageProducer) eldest.getValue();
+            try {
+                producer.close();
+            } catch (JMSException jmsEx) {}
+        }
+    }
+
+    private static class DiscardingMap<E> extends AbstractMap<Destination, E> {
+
+        private static final DiscardingMap<Object> INSTANCE = new DiscardingMap<>();
+
+        @SuppressWarnings("unchecked")
+        public static <V> Map<Destination, V> getInstance() {
+            return (Map<Destination, V>) INSTANCE;
+        }
+
+        @Override
+        public E put(Destination key, E value) {
+            return null;
+        }
+
+        @Override
+        public E get(Object key) {
+            return null;
+        }
+
+        @Override
+        public E remove(Object key) {
+            return null;
+        }
+
+        @Override
+        public void clear() {
+            // Nothing to do here.
+        }
+
+        @Override
+        public Set<Entry<Destination, E>> entrySet() {
+            return Collections.emptySet();
         }
     }
 }

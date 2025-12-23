@@ -66,4 +66,9 @@ public class JmsPoolTopicPublisher extends JmsPoolMessageProducer implements Top
     public TopicPublisher getTopicPublisher() throws JMSException {
         return (TopicPublisher) getMessageProducer();
     }
+
+    @Override
+    boolean isTopicPublisher() {
+        return true;
+    }
 }

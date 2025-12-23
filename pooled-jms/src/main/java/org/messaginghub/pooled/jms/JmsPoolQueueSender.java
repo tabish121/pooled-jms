@@ -56,4 +56,9 @@ public class JmsPoolQueueSender extends JmsPoolMessageProducer implements QueueS
     public QueueSender getQueueSender() throws JMSException {
         return (QueueSender) getMessageProducer();
     }
+
+    @Override
+    boolean isQueueSender() {
+        return true;
+    }
 }
