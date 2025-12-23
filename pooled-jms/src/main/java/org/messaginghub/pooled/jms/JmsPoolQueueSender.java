@@ -25,7 +25,7 @@ import jakarta.jms.Queue;
 import jakarta.jms.QueueSender;
 
 /**
- * {@link QueueSender} instance that is created and managed by the PooledConnection.
+ * A {@link QueueSender} instance that is created and managed by a pooled session.
  */
 public class JmsPoolQueueSender extends JmsPoolMessageProducer implements QueueSender, AutoCloseable {
 

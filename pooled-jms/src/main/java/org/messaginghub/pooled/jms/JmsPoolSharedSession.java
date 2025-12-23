@@ -37,6 +37,10 @@ import jakarta.jms.TopicSession;
  * Used to store a pooled session instance and any resources that can be left open
  * and carried along with the pooled instance such as the anonymous producer used
  * for all MessageProducer instances created from this pooled session when enabled.
+ * When the client code closes the session any resources that it created during the
+ * time it was loaned to the client will be closed and cleared. If no errors occur
+ * during the session cleanup it will be placed back into the pool of sessions for
+ * use when a new call to create a session is made.
  */
 final class JmsPoolSharedSession {
 

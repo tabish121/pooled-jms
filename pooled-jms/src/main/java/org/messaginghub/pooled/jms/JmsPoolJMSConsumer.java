@@ -16,16 +16,16 @@
  */
 package org.messaginghub.pooled.jms;
 
+import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
+
 import jakarta.jms.JMSConsumer;
 import jakarta.jms.JMSException;
 import jakarta.jms.JMSRuntimeException;
 import jakarta.jms.Message;
 import jakarta.jms.MessageListener;
 
-import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
-
 /**
- * JMSConsumer implementation backed by a pooled Connection.
+ * {@link JMSConsumer} implementation backed by a pooled Connection.
  */
 public class JmsPoolJMSConsumer implements JMSConsumer, AutoCloseable {
 
