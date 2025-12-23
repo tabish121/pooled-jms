@@ -26,6 +26,8 @@ import jakarta.jms.InvalidDestinationException;
 import jakarta.jms.JMSException;
 import jakarta.jms.Message;
 import jakarta.jms.MessageProducer;
+import jakarta.jms.QueueSender;
+import jakarta.jms.TopicPublisher;
 
 /**
  * A pooled {@link MessageProducer}
@@ -158,7 +160,7 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
         // changes to match what's been configured here.
         synchronized (messageProducer) {
             long oldDelayValue = 0;
-            
+
             if (deliveryDelay != 0 && session.isJMSVersionSupported(2, 0)) {
                 oldDelayValue = messageProducer.getDeliveryDelay();
                 try {
@@ -358,6 +360,20 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
      */
     Destination getDelegateDestination() {
         return destination;
+    }
+
+    /**
+     * @return <code>true</code> if the implementation is actually a JMS {@link TopicPublisher}
+     */
+    boolean isTopicPublisher() {
+        return false;
+    }
+
+    /**
+     * @return <code>true</code> if the implementation is actually a JMS {@link QueueSender}
+     */
+    boolean isQueueSender() {
+        return false;
     }
 
     private void doClose(boolean force) throws JMSException {
