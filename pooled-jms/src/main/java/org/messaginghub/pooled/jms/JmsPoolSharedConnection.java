@@ -30,6 +30,7 @@ import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPoolConfig;
+import org.messaginghub.pooled.jms.util.ReferenceCount;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,10 +61,10 @@ class JmsPoolSharedConnection implements ExceptionListener {
     private final Map<JmsPoolSession, JmsPoolSession> loanedSessions = new ConcurrentHashMap<>();
     private final Queue<ExceptionListener> exceptionListeners = new ConcurrentLinkedQueue<>();
     private final String connectionId;
+    private final ReferenceCount referenceCount = new ReferenceCount();
 
     protected Connection connection;
 
-    private int referenceCount;
     private long lastUsed = System.currentTimeMillis();
     private boolean hasExpired;
     private int idleTimeout = 30_000;
@@ -400,17 +401,16 @@ class JmsPoolSharedConnection implements ExceptionListener {
 
     synchronized void incrementReferenceCount() {
         if (connection != null) {
-            referenceCount++;
+            referenceCount.incrementAndGet();
             lastUsed = System.currentTimeMillis();
         }
     }
 
     synchronized void decrementReferenceCount() {
         if (connection != null) {
-            Math.min(0, referenceCount--);
             lastUsed = System.currentTimeMillis();
 
-            if (referenceCount == 0) {
+            if (referenceCount.decrementAndGet() == 0) {
                 // Loaned sessions are those that are active in the sessionPool and have
                 // not been closed by the client before closing the connection. These need
                 // to be closed so that all session's reflect the fact that the parent
@@ -445,7 +445,7 @@ class JmsPoolSharedConnection implements ExceptionListener {
 
         // Only set hasExpired here if no references, as a Connection with references is by
         // definition not idle at this time.
-        if (referenceCount == 0 && idleTimeout > 0 && (lastUsed + idleTimeout) - System.currentTimeMillis() < 0) {
+        if (referenceCount.isUnreferenced() && idleTimeout > 0 && (lastUsed + idleTimeout) - System.currentTimeMillis() < 0) {
             hasExpired = true;
             close();
         }

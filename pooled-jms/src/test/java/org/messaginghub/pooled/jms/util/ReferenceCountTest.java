@@ -17,7 +17,9 @@
 package org.messaginghub.pooled.jms.util;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -28,6 +30,7 @@ public class ReferenceCountTest {
         final ReferenceCount count = new ReferenceCount();
 
         assertEquals(0, count.getCount());
+        assertTrue(count.isUnreferenced());
     }
 
     @Test
@@ -35,7 +38,17 @@ public class ReferenceCountTest {
         final ReferenceCount count = new ReferenceCount(1);
 
         assertEquals(1, count.getCount());
-        assertEquals(1, count.decrement());
+        assertEquals(1, count.decrementAndGet());
+        assertTrue(count.isUnreferenced());
+    }
+
+    @Test
+    void testCreateWithFloorPostGet() {
+        final ReferenceCount count = new ReferenceCount(1);
+
+        assertEquals(1, count.getCount());
+        assertEquals(1, count.getAndDecrement());
+        assertTrue(count.isUnreferenced());
     }
 
     @Test
@@ -47,9 +60,39 @@ public class ReferenceCountTest {
     void testIncrement() {
         final ReferenceCount count = new ReferenceCount();
 
+        assertTrue(count.isUnreferenced());
         assertEquals(0, count.getCount());
-        assertEquals(1, count.increment());
-        assertEquals(2, count.increment());
+        assertEquals(1, count.incrementAndGet());
+        assertFalse(count.isUnreferenced());
+        assertEquals(2, count.incrementAndGet());
+        assertFalse(count.isUnreferenced());
+    }
+
+    @Test
+    void testGetAndIncrement() {
+        final ReferenceCount count = new ReferenceCount();
+
+        assertTrue(count.isUnreferenced());
+        assertEquals(0, count.getCount());
+        assertEquals(0, count.getAndIncrement());
+        assertFalse(count.isUnreferenced());
+        assertEquals(1, count.getAndIncrement());
+        assertFalse(count.isUnreferenced());
+    }
+
+    @Test
+    void testGetAndDecrement() {
+        final ReferenceCount count = new ReferenceCount();
+
+        assertTrue(count.isUnreferenced());
+        assertEquals(0, count.getCount());
+        assertEquals(1, count.incrementAndGet());
+        assertFalse(count.isUnreferenced());
+        assertEquals(2, count.incrementAndGet());
+        assertFalse(count.isUnreferenced());
+        assertEquals(2, count.getAndDecrement());
+        assertEquals(1, count.getAndDecrement());
+        assertTrue(count.isUnreferenced());
     }
 
     @Test
@@ -57,9 +100,19 @@ public class ReferenceCountTest {
         final ReferenceCount count = new ReferenceCount(Integer.MAX_VALUE - 1);
 
         assertEquals(Integer.MAX_VALUE - 1, count.getCount());
-        assertEquals(Integer.MAX_VALUE, count.increment());
-        assertEquals(Integer.MAX_VALUE, count.increment());
-        assertEquals(Integer.MAX_VALUE - 1, count.decrement());
+        assertEquals(Integer.MAX_VALUE, count.incrementAndGet());
+        assertEquals(Integer.MAX_VALUE, count.incrementAndGet());
+        assertEquals(Integer.MAX_VALUE - 1, count.decrementAndGet());
+    }
+
+    @Test
+    void testGetAndIncrementPastMaxInt() {
+        final ReferenceCount count = new ReferenceCount(Integer.MAX_VALUE - 1);
+
+        assertEquals(Integer.MAX_VALUE - 1, count.getCount());
+        assertEquals(Integer.MAX_VALUE - 1, count.getAndIncrement());
+        assertEquals(Integer.MAX_VALUE, count.getAndIncrement());
+        assertEquals(Integer.MAX_VALUE - 1, count.decrementAndGet());
     }
 
     @Test
@@ -67,10 +120,10 @@ public class ReferenceCountTest {
         final ReferenceCount count = new ReferenceCount(10);
 
         assertEquals(10, count.getCount());
-        assertEquals(11, count.increment());
-        assertEquals(12, count.increment());
-        assertEquals(11, count.decrement());
-        assertEquals(10, count.decrement());
-        assertEquals(10, count.decrement());
+        assertEquals(11, count.incrementAndGet());
+        assertEquals(12, count.incrementAndGet());
+        assertEquals(11, count.decrementAndGet());
+        assertEquals(10, count.decrementAndGet());
+        assertEquals(10, count.decrementAndGet());
     }
 }

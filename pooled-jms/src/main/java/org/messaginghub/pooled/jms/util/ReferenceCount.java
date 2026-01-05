@@ -36,7 +36,8 @@ public final class ReferenceCount {
 
     /**
      * Create a reference counter with a minimum value which controls the floor
-     * of the counter when calling the {@link #decrement()} method.
+     * of the counter when calling the {@link #decrementAndGet()} method or the
+     * {@link #getAndDecrement()} method.
      *
      * @param minValue
      * 	The floor value the reference count can fall to (cannot be negative).
@@ -50,21 +51,71 @@ public final class ReferenceCount {
         this.count = minValue;
     }
 
+    /**
+     * {@return true if the reference count value is equal to the minimum value (default is zero)}
+     */
+    public boolean isUnreferenced() {
+        return count == minValue;
+    }
+
+    /**
+     * {@return the current value of the reference count}
+     */
     public int getCount() {
         return count;
     }
 
-    public int decrement() {
+    /**
+     * Decrements the current reference count value until the minimum value is reached and
+     * returns the new reference count.
+     *
+     * @return the newly decremented reference count or the minimum value if reached.
+     */
+    public int decrementAndGet() {
         return COUNT_UPDATER.accumulateAndGet(this, -1, this::referenceCountUpdater);
     }
 
-    public int increment() {
+    /**
+     * Increments the current reference count value until the maximum integer value is reached and
+     * returns the new reference count.
+     *
+     * @return the newly incremented reference count or the maximum integer value if reached.
+     */
+    public int incrementAndGet() {
         return COUNT_UPDATER.accumulateAndGet(this, 1, this::referenceCountUpdater);
+    }
+
+    /**
+     * Decrements the current reference count value until the minimum value is reached and
+     * returns the previous reference count.
+     *
+     * @return the reference count before the decrement or the minimum value if reached.
+     */
+    public int getAndDecrement() {
+        return COUNT_UPDATER.getAndUpdate(this, this::referenceCountSubtraction);
+    }
+
+    /**
+     * Increments the current reference count value until the maximum integer value is reached and
+     * returns the previous reference count.
+     *
+     * @return the reference count prior to the increment or the maximum integer value if reached.
+     */
+    public int getAndIncrement() {
+        return COUNT_UPDATER.getAndUpdate(this, this::referenceCountAddition);
     }
 
     @Override
     public String toString() {
-        return getClass().getSimpleName() + ":" + count;
+        return getClass().getSimpleName() + ":=" + count;
+    }
+
+    private int referenceCountAddition(int previous) {
+        return referenceCountUpdater(previous, 1);
+    }
+
+    private int referenceCountSubtraction(int previous) {
+        return referenceCountUpdater(previous, -1);
     }
 
     private int referenceCountUpdater(int previous, int addition) {
