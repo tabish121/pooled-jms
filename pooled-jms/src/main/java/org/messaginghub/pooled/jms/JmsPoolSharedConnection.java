@@ -384,7 +384,7 @@ class JmsPoolSharedConnection implements ExceptionListener {
 
     @Override
     public String toString() {
-        return "JmsPoolConnectionHolder[ " + connectionId + " ]";
+        return getClass().getSimpleName() + "{ " + connectionId + " ]";
     }
 
     protected Session makeSession(JmsPoolSessionKey key) throws JMSException {

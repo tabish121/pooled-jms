@@ -256,7 +256,7 @@ final class JmsPoolSharedSession {
 
     @Override
     public String toString() {
-        return session.toString();
+        return getClass().getSimpleName() + "{ " + session + " ]";
     }
 
     private static class ProducerLRUCache<E> extends LRUCache<Destination, E> {
