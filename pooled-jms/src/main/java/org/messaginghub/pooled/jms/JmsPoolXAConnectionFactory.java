@@ -81,10 +81,10 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
     @Override
     protected XAConnection createProviderConnection(JmsPoolConnectionKey key) throws JMSException {
         if (connectionFactory instanceof XAConnectionFactory) {
-            if (key.getUserName() == null && key.getPassword() == null) {
-                return ((XAConnectionFactory) connectionFactory).createXAConnection();
-            } else {
+            if (key.hasCredentials()) {
                 return ((XAConnectionFactory) connectionFactory).createXAConnection(key.getUserName(), key.getPassword());
+            } else {
+                return ((XAConnectionFactory) connectionFactory).createXAConnection();
             }
         } else {
             throw new IllegalStateException("connectionFactory should implement jakarta.jms.XAConnectionFactory");

@@ -24,6 +24,7 @@ final class JmsPoolConnectionKey {
     private final String userName;
     private final String password;
     private final int hashCode;
+    private final transient boolean hasAnyCredentials;
 
     /**
      * Creates a new ConnectionKey using the supplied values.
@@ -37,6 +38,11 @@ final class JmsPoolConnectionKey {
         this.password = password;
         this.userName = userName;
         this.hashCode = computeHash(userName, password);
+        this.hasAnyCredentials = userName != null || password != null;
+    }
+
+    public boolean hasCredentials() {
+        return hasAnyCredentials;
     }
 
     public String getPassword() {
