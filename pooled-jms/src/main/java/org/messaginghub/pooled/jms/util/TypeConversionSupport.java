@@ -19,6 +19,9 @@ package org.messaginghub.pooled.jms.util;
 import java.util.Date;
 import java.util.HashMap;
 
+/**
+ * A conversion support helper for conversion from objects of one type to another in JMS classes.
+ */
 public final class TypeConversionSupport {
 
     static class ConversionKey {

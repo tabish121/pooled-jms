@@ -28,6 +28,7 @@ import java.util.Map;
 public class LRUCache<K, V> extends LinkedHashMap<K, V> {
 
     private static final long serialVersionUID = -342098639681884413L;
+
     protected int maxCacheSize = 10000;
 
     /**
@@ -69,14 +70,19 @@ public class LRUCache<K, V> extends LinkedHashMap<K, V> {
     }
 
     /**
-     * @return Returns the maxCacheSize.
+     * Returns the maximum number of elements that are allowed to be cached.
+     *
+     * @return the maxCacheSize value assigned to the LRU cache.
      */
     public int getMaxCacheSize() {
         return maxCacheSize;
     }
 
     /**
-     * @param maxCacheSize The maxCacheSize to set.
+     * Sets the maximum number of elements that can be held in this LRU cache.
+     *
+     * @param maxCacheSize
+     * 	The maxCacheSize to assign to this cache object.
      */
     public void setMaxCacheSize(int maxCacheSize) {
         this.maxCacheSize = maxCacheSize;

@@ -30,6 +30,9 @@ public final class ReferenceCount {
     private final int minValue;
     private volatile int count;
 
+    /**
+     * Creates a default reference count which carries no references.
+     */
     public ReferenceCount() {
         this(0);
     }

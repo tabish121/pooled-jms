@@ -24,6 +24,8 @@ import jakarta.jms.MessageFormatException;
  */
 public class JMSMessagePropertySupport {
 
+    private JMSMessagePropertySupport() {}
+
     //----- Conversions Validation for Message Properties --------------------//
 
     @SuppressWarnings("unchecked")

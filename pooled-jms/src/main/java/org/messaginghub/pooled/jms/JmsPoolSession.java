@@ -56,6 +56,13 @@ import jakarta.jms.TopicSession;
 import jakarta.jms.TopicSubscriber;
 import jakarta.jms.XASession;
 
+/**
+ * Session that has been taken from a pool of sessions maintained by a pooled JMS Connection.
+ * <p>
+ * The application code has full ownership of the pooled session instance until it closes its
+ * wrapper object at which time the session is returned to the connection's pool for use by a
+ * new call to create a session.
+ */
 public class JmsPoolSession implements Session, TopicSession, QueueSession, XASession, AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -89,7 +96,7 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
         }
     }
 
-    public void internalClose(boolean forceInvalidate) throws JMSException {
+    void internalClose(boolean forceInvalidate) throws JMSException {
         if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
             final boolean invalidate = cleanupSession() || forceInvalidate;
 
@@ -448,11 +455,27 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
 
     //----- Session configuration methods ------------------------------------//
 
+    /**
+     * Adds a listener to the pooled session wrapper for some specific life-cycle events.
+     *
+     * @param listener
+     * 	The new event listener to add to the set assigned to this wrapper instance.
+     *
+     * @throws JMSException if an error occurs while attempting to add the event listener.
+     */
     public void addSessionEventListener(JmsPoolSessionEventListener listener) throws JMSException {
         checkClosed();
         sessionEventListeners.put(listener, listener);
     }
 
+    /**
+     * Provides a means of accessing the underlying JMS {@link Session} that this pooled session
+     * wrapper is managing. This is mainly a test point and should not be used by application logic.
+     *
+     * @return the underling JMS {@link Session} that this object is wrapping.
+     *
+     * @throws JMSException if an error occurs while attempting to access the session.
+     */
     public Session getInternalSession() throws JMSException {
         return safeGetSessionHolder().getSession();
     }

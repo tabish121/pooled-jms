@@ -52,6 +52,12 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
     private boolean tmFromJndi = false;
     private String tmJndiName = "java:/TransactionManager";
 
+    /**
+     * Gets the assigned {@link TransactionManager} this connection factory will use when creating
+     * new {@link XAConnection} instances.
+     *
+     * @return a {@link TransactionManager} either from assignment for from JNDI.
+     */
     public TransactionManager getTransactionManager() {
         if (transactionManager == null && tmFromJndi) {
             try {
@@ -65,6 +71,12 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
         return transactionManager;
     }
 
+    /**
+     * Sets the {@link TransactionManager} to use when creating new JMS {@link XAConnection} instances.
+     *
+     * @param transactionManager
+     * 	The transaction manager to use when creating new connections.
+     */
     public void setTransactionManager(TransactionManager transactionManager) {
         this.transactionManager = transactionManager;
     }

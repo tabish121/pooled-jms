@@ -20,6 +20,11 @@
  */
 package org.messaginghub.jms.example;
 
+import javax.naming.Context;
+import javax.naming.InitialContext;
+
+import org.messaginghub.pooled.jms.JmsPoolConnectionFactory;
+
 import jakarta.jms.Connection;
 import jakarta.jms.ConnectionFactory;
 import jakarta.jms.DeliveryMode;
@@ -31,13 +36,22 @@ import jakarta.jms.MessageConsumer;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.Session;
 import jakarta.jms.TextMessage;
-import javax.naming.Context;
-import javax.naming.InitialContext;
 
-import org.messaginghub.pooled.jms.JmsPoolConnectionFactory;
-
+/**
+ * Simple Hell World style example of obtaining an JMS connection from the JMS pool.
+ */
 public class HelloWorld {
 
+    private HelloWorld() {}
+
+    /**
+     * Runs the hello world example.
+     *
+     * @param args
+     * 	Command line arguments provided by the caller.
+     *
+     * @throws Exception if an error occurs running the example.
+     */
     public static void main(String[] args) throws Exception {
         JmsPoolConnectionFactory poolingFactory = new JmsPoolConnectionFactory();
 
@@ -84,10 +98,10 @@ public class HelloWorld {
             for (int i = 0; i < messagePayload.length(); ++i) {
                 TextMessage receivedMessage = (TextMessage) messageConsumer.receive(2000l);
                 if (receivedMessage != null) {
-                	messageReceived.append(receivedMessage.getText());
+                    messageReceived.append(receivedMessage.getText());
                 } else {
-                	messageReceived.setLength(0);
-                	messageReceived.append("No message received within the given timeout!");
+                    messageReceived.setLength(0);
+                    messageReceived.append("No message received within the given timeout!");
                     System.out.println("No message received within the given timeout!");
                     break;
                 }

@@ -100,6 +100,14 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
         return getClass().getSimpleName() + " { " + getDelegate() + " }";
     }
 
+    /**
+     * Provides access to the wrapped JMS {@link MessageConsumer} and is meant primarily as a
+     * test point and the application logic should not depend on this method.
+     *
+     * @return the wrapped JMS {@link MessageConsumer}.
+     *
+     * @throws JMSException if an error occurs while accessing the wrapped consumer.
+     */
     public MessageConsumer getMessageConsumer() throws JMSException {
         checkClosed();
         return messageConsumer;
@@ -107,12 +115,20 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
 
     //----- Internal support methods -----------------------------------------//
 
+    /**
+     * Checks if the wrapper has been closed previously.
+     *
+     * @throws JMSException if the wrapper was closed.
+     */
     protected void checkClosed() throws JMSException {
         if (closed != 0) {
             throw new IllegalStateException("The MessageConsumer is closed");
         }
     }
 
+    /**
+     * {@return the internal JMS message consumer with no validation logic}
+     */
     protected MessageConsumer getDelegate() {
         return messageConsumer;
     }

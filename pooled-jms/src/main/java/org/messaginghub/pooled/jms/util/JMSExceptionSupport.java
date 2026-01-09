@@ -48,6 +48,8 @@ import jakarta.jms.TransactionRolledBackRuntimeException;
  */
 public final class JMSExceptionSupport {
 
+    private JMSExceptionSupport() {}
+
     /**
      * Creates or passes through a JMSException to be thrown to the client.
      *
@@ -120,11 +122,11 @@ public final class JMSExceptionSupport {
      * @return a MessageEOFException instance.
      */
     public static MessageEOFException createMessageEOFException(Throwable cause) {
-    	if (cause instanceof MessageEOFException) {
-    		return (MessageEOFException) cause;
-    	}
+        if (cause instanceof MessageEOFException) {
+            return (MessageEOFException) cause;
+        }
 
-    	String message = cause.getMessage();
+        String message = cause.getMessage();
         if (message == null || message.length() == 0) {
             message = cause.toString();
         }
@@ -153,11 +155,11 @@ public final class JMSExceptionSupport {
      * @return a MessageEOFException instance.
      */
     public static MessageFormatException createMessageFormatException(Throwable cause) {
-    	if (cause instanceof MessageFormatException) {
-    		return (MessageFormatException) cause;
-    	}
+        if (cause instanceof MessageFormatException) {
+            return (MessageFormatException) cause;
+        }
 
-    	String message = cause.getMessage();
+        String message = cause.getMessage();
         if (message == null || message.length() == 0) {
             message = cause.toString();
         }
@@ -186,9 +188,9 @@ public final class JMSExceptionSupport {
      * @return a ResourceAllocationException instance.
      */
     public static ResourceAllocationException createResourceAllocationException(Throwable cause) {
-    	if (cause instanceof ResourceAllocationException) {
-    		return (ResourceAllocationException) cause;
-    	}
+        if (cause instanceof ResourceAllocationException) {
+            return (ResourceAllocationException) cause;
+        }
 
         String message = cause.getMessage();
         if (message == null || message.length() == 0) {

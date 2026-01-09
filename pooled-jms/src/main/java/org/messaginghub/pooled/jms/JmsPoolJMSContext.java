@@ -60,7 +60,7 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
     private JmsPoolMessageProducer sharedProducer;
     private boolean autoStart = DEFAULT_JMS_CONTEXT_AUTO_START;
 
-    public JmsPoolJMSContext(JmsPoolConnection connection, int sessionMode) {
+    JmsPoolJMSContext(JmsPoolConnection connection, int sessionMode) {
         this(connection, sessionMode, new AtomicLong(1));
     }
 
@@ -485,6 +485,13 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
         return getClass().getSimpleName() + " { " + connection + " }";
     }
 
+    /**
+     * Provides access to the underling JMS {@link Connection} that this context is wrapping.
+     * This is primarily meant as a test point and the application logic should not depend on
+     * this method.
+     *
+     * @return the wrapped JMS {@link Connection}
+     */
     public Connection getConnection() {
         try {
             return connection.getConnection();
