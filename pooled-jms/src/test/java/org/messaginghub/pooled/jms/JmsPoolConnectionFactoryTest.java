@@ -33,6 +33,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.messaginghub.pooled.jms.mock.MockJMSConnection;
+import org.messaginghub.pooled.jms.mock.MockJMSConnectionFactory;
+import org.messaginghub.pooled.jms.util.Wait;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import jakarta.jms.Connection;
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.IllegalStateRuntimeException;
@@ -41,14 +49,6 @@ import jakarta.jms.QueueConnection;
 import jakarta.jms.QueueConnectionFactory;
 import jakarta.jms.TopicConnection;
 import jakarta.jms.TopicConnectionFactory;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import org.messaginghub.pooled.jms.mock.MockJMSConnection;
-import org.messaginghub.pooled.jms.mock.MockJMSConnectionFactory;
-import org.messaginghub.pooled.jms.util.Wait;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Performs basic tests on the JmsPoolConnectionFactory implementation.
@@ -261,6 +261,31 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
 
         cf.start();
 
+        assertNotNull(cf.createConnection());
+        assertEquals(1, cf.getNumConnections());
+
+        cf.stop();
+    }
+
+    @Test
+    public void testStoppedConnectionFactoryRetainsPreviousConfiguration() throws Exception {
+        MockJMSConnectionFactory mock = new MockJMSConnectionFactory();
+        cf = new JmsPoolConnectionFactory();
+        cf.setConnectionFactory(mock);
+        cf.setMaxConnections(100);
+        cf.setConnectionCheckInterval(1000);
+        cf.stop();
+
+        assertEquals(100, cf.getMaxConnections());
+        assertEquals(1000, cf.getConnectionCheckInterval());
+        assertEquals(0, cf.getNumConnections());
+        assertNull(cf.createConnection());
+        assertEquals(0, cf.getNumConnections());
+
+        cf.start();
+
+        assertEquals(100, cf.getMaxConnections());
+        assertEquals(1000, cf.getConnectionCheckInterval());
         assertNotNull(cf.createConnection());
         assertEquals(1, cf.getNumConnections());
 

@@ -94,10 +94,13 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     private static final long EXHAUSTION_RECOVER_INITIAL_BACKOFF = 1_000L;
     private static final long EXHAUSTION_RECOVER_BACKOFF_LIMIT = 10_000L;
 
-    private static final long DEFAULT_TIME_BETWEEN_EVICTION_RUNS = -1;
+    public static final long DEFAULT_TIME_BETWEEN_EVICTION_RUNS = -1;
+    public static final int DEFAULT_MAX_CONNECTIONS = 1;
+
+    private int maxConnections = DEFAULT_MAX_CONNECTIONS;
+    private long connectionCheckInterval = DEFAULT_TIME_BETWEEN_EVICTION_RUNS;
 
     public static final int DEFAULT_MAX_SESSIONS_PER_CONNECTION = 500;
-    public static final int DEFAULT_MAX_CONNECTIONS = 1;
     public static final int DEFAULT_CONNECTION_IDLE_TIMEOUT = 30_000;
     public static final boolean DEFAULT_BLOCK_IF_SESSION_FULL = true;
     public static final long DEFAULT_BLOCK_IF_SESSION_FULL_TIMEOUT = -1L;
@@ -106,10 +109,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     public static final boolean DEFAULT_USE_PROVIDER_JMS_CONTEXT = false;
     public static final boolean DEFAULT_FAULT_TOLERANT_CONNECTIONS = false;
 
-    private GenericKeyedObjectPool<JmsPoolConnectionKey, JmsPoolSharedConnection> connectionsPool;
-
-    protected Object connectionFactory;
-
+    // Connection specific configuration
     private int maxSessionsPerConnection = DEFAULT_MAX_SESSIONS_PER_CONNECTION;
     private int maxIdleSessionsPerConnection = DEFAULT_MAX_SESSIONS_PER_CONNECTION;
     private int connectionIdleTimeout = DEFAULT_CONNECTION_IDLE_TIMEOUT;
@@ -119,6 +119,10 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     private int explicitProducerCacheSize = DEFUALT_EXPLICIT_PRODUCER_CACHE_SIZE;
     private boolean useProviderJMSContext = DEFAULT_USE_PROVIDER_JMS_CONTEXT;
     private boolean faultTolerantConnections = DEFAULT_FAULT_TOLERANT_CONNECTIONS;
+
+    protected Object connectionFactory;
+
+    private GenericKeyedObjectPool<JmsPoolConnectionKey, JmsPoolSharedConnection> connectionsPool;
     private volatile int stopped;
 
     // Temporary value used to always fetch the result of makeObject.
@@ -388,7 +392,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return the maxConnections that will be created for this pool.
      */
     public int getMaxConnections() {
-        return getConnectionsPool().getMaxIdlePerKey();
+        return maxConnections;
     }
 
     /**
@@ -401,8 +405,11 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * 		the maximum Connections to pool for a given user / password combination.
      */
     public void setMaxConnections(int maxConnections) {
-        getConnectionsPool().setMaxIdlePerKey(maxConnections);
-        getConnectionsPool().setMaxTotalPerKey(maxConnections);
+        this.maxConnections = maxConnections;
+        if (!isStopped()) {
+            getConnectionsPool().setMaxIdlePerKey(maxConnections);
+            getConnectionsPool().setMaxTotalPerKey(maxConnections);
+        }
     }
 
     /**
@@ -507,21 +514,28 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see #setConnectionIdleTimeout(int)
      */
     public void setConnectionCheckInterval(long connectionCheckInterval) {
-        getConnectionsPool().setDurationBetweenEvictionRuns(Duration.ofMillis(connectionCheckInterval));
+        this.connectionCheckInterval = connectionCheckInterval;
+        if (!isStopped()) {
+            getConnectionsPool().setDurationBetweenEvictionRuns(Duration.ofMillis(connectionCheckInterval));
+        }
     }
 
     /**
      * @return the number of milliseconds to sleep between runs of the connection check thread.
      */
     public long getConnectionCheckInterval() {
-        return getConnectionsPool().getDurationBetweenEvictionRuns().toMillis();
+        return connectionCheckInterval;
     }
 
     /**
      * @return the number of Connections currently in the Pool
      */
     public int getNumConnections() {
-        return getConnectionsPool().getNumIdle();
+        if (isStopped()) {
+            return 0;
+        } else {
+            return getConnectionsPool().getNumIdle();
+        }
     }
 
     /**
@@ -613,7 +627,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     //----- Internal implementation ------------------------------------------//
 
     GenericKeyedObjectPool<JmsPoolConnectionKey, JmsPoolSharedConnection> getConnectionsPool() {
-        if (connectionsPool == null) {
+        if (!isStopped() && connectionsPool == null) {
             final GenericKeyedObjectPoolConfig<JmsPoolSharedConnection> poolConfig = new GenericKeyedObjectPoolConfig<>();
             poolConfig.setJmxEnabled(false);
 
@@ -690,7 +704,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
             connectionsPool.setMinIdlePerKey(1); // Always want one connection pooled.
             connectionsPool.setLifo(false);
             connectionsPool.setBlockWhenExhausted(false);
-            connectionsPool.setDurationBetweenEvictionRuns(Duration.ofMillis(DEFAULT_TIME_BETWEEN_EVICTION_RUNS));
+            connectionsPool.setDurationBetweenEvictionRuns(Duration.ofMillis(connectionCheckInterval));
             connectionsPool.setMinEvictableIdleDuration(Duration.ofMillis(Long.MAX_VALUE));
             connectionsPool.setTestOnBorrow(true);
             connectionsPool.setTestWhileIdle(true);
