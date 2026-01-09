@@ -17,23 +17,35 @@
 package org.messaginghub.pooled.jms;
 
 import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
 
+/**
+ * A Custom pooled JCA {@link ConnectionFactory} instance.
+ */
 public class JmsPoolJcaConnectionFactory extends JmsPoolXAConnectionFactory {
 
     private static final long serialVersionUID = -2470093537159318333L;
 
     private String name;
 
+    /**
+     * {@return the name assigned to this JCA ConnectionFactory}
+     */
     public String getName() {
         return name;
     }
 
+    /**
+     * Sets the name assigned to this JCA ConnectionFactory
+     *
+     * @param name The assigned name for this JCA {@link ConnectionFactory}.
+     */
     public void setName(String name) {
         this.name = name;
     }
 
     @Override
-    protected JmsPoolSharedJCAConnection createPooledConnection(Connection connection) {
-        return new JmsPoolSharedJCAConnection(connection, getTransactionManager(), getName());
+    protected JmsPoolSharedJCAConnection createPooledConnection(JmsPoolConnectionConfiguration configuration, Connection connection) {
+        return new JmsPoolSharedJCAConnection(configuration, connection, getTransactionManager(), getName());
     }
 }

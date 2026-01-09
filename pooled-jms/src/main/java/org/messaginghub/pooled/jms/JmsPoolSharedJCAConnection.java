@@ -29,8 +29,8 @@ class JmsPoolSharedJCAConnection extends JmsPoolSharedXAConnection {
 
     private final String name;
 
-    public JmsPoolSharedJCAConnection(Connection connection, TransactionManager transactionManager, String name) {
-        super(connection, transactionManager);
+    public JmsPoolSharedJCAConnection(JmsPoolConnectionConfiguration configuration, Connection connection, TransactionManager transactionManager, String name) {
+        super(configuration, connection, transactionManager);
 
         this.name = name;
     }

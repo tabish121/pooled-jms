@@ -94,39 +94,38 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     private static final long EXHAUSTION_RECOVER_INITIAL_BACKOFF = 1_000L;
     private static final long EXHAUSTION_RECOVER_BACKOFF_LIMIT = 10_000L;
 
+    /**
+     * The default value controlling time between checks for idle connections in the pool.
+     */
     public static final long DEFAULT_TIME_BETWEEN_EVICTION_RUNS = -1;
+
+    /**
+     * The default maximum number of connections to maintain in the connection pool.
+     */
     public static final int DEFAULT_MAX_CONNECTIONS = 1;
+
+    /**
+     * The default value controlling if the connection pool uses its own JMS context instances or
+     * provides one directly from the configuration {@link ConnectionFactory} instance.
+     */
+    public static final boolean DEFAULT_USE_PROVIDER_JMS_CONTEXT = false;
 
     private int maxConnections = DEFAULT_MAX_CONNECTIONS;
     private long connectionCheckInterval = DEFAULT_TIME_BETWEEN_EVICTION_RUNS;
-
-    public static final int DEFAULT_MAX_SESSIONS_PER_CONNECTION = 500;
-    public static final int DEFAULT_CONNECTION_IDLE_TIMEOUT = 30_000;
-    public static final boolean DEFAULT_BLOCK_IF_SESSION_FULL = true;
-    public static final long DEFAULT_BLOCK_IF_SESSION_FULL_TIMEOUT = -1L;
-    public static final boolean DEFAULT_USE_ANONYMOUS_PRODUCERS = true;
-    public static final int DEFUALT_EXPLICIT_PRODUCER_CACHE_SIZE = 0;
-    public static final boolean DEFAULT_USE_PROVIDER_JMS_CONTEXT = false;
-    public static final boolean DEFAULT_FAULT_TOLERANT_CONNECTIONS = false;
-
-    // Connection specific configuration
-    private int maxSessionsPerConnection = DEFAULT_MAX_SESSIONS_PER_CONNECTION;
-    private int maxIdleSessionsPerConnection = DEFAULT_MAX_SESSIONS_PER_CONNECTION;
-    private int connectionIdleTimeout = DEFAULT_CONNECTION_IDLE_TIMEOUT;
-    private boolean blockIfSessionPoolIsFull = DEFAULT_BLOCK_IF_SESSION_FULL;
-    private long blockIfSessionPoolIsFullTimeout = DEFAULT_BLOCK_IF_SESSION_FULL_TIMEOUT;
-    private boolean useAnonymousProducers = DEFAULT_USE_ANONYMOUS_PRODUCERS;
-    private int explicitProducerCacheSize = DEFUALT_EXPLICIT_PRODUCER_CACHE_SIZE;
     private boolean useProviderJMSContext = DEFAULT_USE_PROVIDER_JMS_CONTEXT;
-    private boolean faultTolerantConnections = DEFAULT_FAULT_TOLERANT_CONNECTIONS;
-
-    protected Object connectionFactory;
-
     private GenericKeyedObjectPool<JmsPoolConnectionKey, JmsPoolSharedConnection> connectionsPool;
     private volatile int stopped;
 
-    // Temporary value used to always fetch the result of makeObject.
+    /**
+     * The assigned {@link ConnectionFactory} used by the pool.
+     */
+    protected Object connectionFactory;
+
+    // Temporary value used to always fetch the result of makeObject, this is done mainly because
+    // the commons pool add API does not return the element that was just added so the pool cannot
+    // ensure that if it called borrow it would get the newest connection.
     private final AtomicReference<JmsPoolSharedConnection> mostRecentlyCreated = new AtomicReference<JmsPoolSharedConnection>(null);
+    private final JmsPoolConnectionConfiguration connectionConfig = new JmsPoolConnectionConfiguration();
 
     /**
      * @return the currently configured ConnectionFactory used to create the pooled Connections.
@@ -280,7 +279,18 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
         }
     }
 
-    //----- Connection Pool Configuration ------------------------------------//
+    /**
+     * @return the number of Connections currently in the Pool if started, otherwise returns zero.
+     */
+    public int getNumConnections() {
+        if (isStopped()) {
+            return 0;
+        } else {
+            return getConnectionsPool().getNumIdle();
+        }
+    }
+
+    //----- Pooled Connection Configuration ----------------------------------//
 
     /**
      * Returns the currently configured maximum idle sessions per connection which by
@@ -292,7 +302,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see setMaxIdleSessionsPerConnection
      */
     public int getMaxIdleSessionsPerConnection() {
-        return maxIdleSessionsPerConnection;
+        return connectionConfig.getMaxIdleSessionsPerConnection();
     }
 
     /**
@@ -320,7 +330,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see setMaxSessionsPerConnection
      */
     public void setMaxIdleSessionsPerConnection(int maxIdleSessionsPerConnection) {
-        this.maxIdleSessionsPerConnection = maxIdleSessionsPerConnection;
+        connectionConfig.setMaxIdleSessionsPerConnection(maxIdleSessionsPerConnection);
     }
 
     /**
@@ -334,7 +344,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see setMaxIdleSessionsPerConnection
      */
     public int getMaxSessionsPerConnection() {
-        return maxSessionsPerConnection;
+        return connectionConfig.getMaxSessionsPerConnection();
     }
 
     /**
@@ -354,7 +364,19 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *      The maximum number of pooled sessions per connection in the pool.
      */
     public void setMaxSessionsPerConnection(int maxSessionsPerConnection) {
-        this.maxSessionsPerConnection = maxSessionsPerConnection;
+        connectionConfig.setMaxSessionsPerConnection(maxSessionsPerConnection);
+    }
+
+    /**
+     * Returns whether a pooled Connection will enter a blocked state or will throw an Exception
+     * once the maximum number of sessions has been borrowed from the the Session Pool.
+     *
+     * @return true if the pooled Connection createSession method will block when the limit is hit.
+     *
+     * @see #setBlockIfSessionPoolIsFull(boolean)
+     */
+    public boolean isBlockIfSessionPoolIsFull() {
+        return connectionConfig.isBlockIfSessionPoolIsFull();
     }
 
     /**
@@ -371,20 +393,161 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *      until a session is available.  defaults to true.
      */
     public void setBlockIfSessionPoolIsFull(boolean block) {
-        this.blockIfSessionPoolIsFull = block;
+        connectionConfig.setBlockIfSessionPoolIsFull(block);
     }
 
     /**
-     * Returns whether a pooled Connection will enter a blocked state or will throw an Exception
-     * once the maximum number of sessions has been borrowed from the the Session Pool.
+     * Gets the idle timeout value applied to Connection's that are created by this pool but are
+     * not currently in use.
+     *
+     * @return the connection idle timeout value in (milliseconds).
+     */
+    public int getConnectionIdleTimeout() {
+        return connectionConfig.getConnectionIdleTimeout();
+    }
+
+    /**
+     * Sets the idle timeout value for Connection's that are created by this pool but not in use in
+     * Milliseconds (defaults to 30 seconds).
+     * <p>
+     * For a Connection that is in the pool but has no current users the idle timeout determines how
+     * long the Connection can live before it is eligible for removal from the pool.  Normally the
+     * connections are tested when an attempt to check one out occurs so a Connection instance can sit
+     * in the pool much longer than its idle timeout if connections are used infrequently.  To evict idle
+     * connections in a more timely manner the {@link #setConnectionCheckInterval(long)} can be configured
+     * to a non-zero value and the pool will actively check for idle connections that have exceeded their
+     * idle timeout value.
+     *
+     * @param connectionIdleTimeout
+     *      The maximum time a pooled Connection can sit unused before it is eligible for removal.
+     *
+     * @see #setConnectionCheckInterval(long)
+     */
+    public void setConnectionIdleTimeout(int connectionIdleTimeout) {
+        connectionConfig.setConnectionIdleTimeout(connectionIdleTimeout);
+    }
+
+    /**
+     * Should Sessions use one anonymous producer for all producer requests or should a new
+     * MessageProducer be created for each request to create a producer object, default is true.
+     * <p>
+     * When enabled the session only needs to allocate one MessageProducer for all requests and
+     * the MessageProducer#send(destination, message) method can be used.  Normally this is the
+     * right thing to do however it does result in the Broker not showing the producers per
+     * destination.
+     *
+     * @return true if a pooled Session will use only a single anonymous message producer instance.
+     */
+    public boolean isUseAnonymousProducers() {
+        return connectionConfig.isUseAnonymousProducers();
+    }
+
+    /**
+     * Sets whether a pooled Session uses only one anonymous MessageProducer instance or creates
+     * a new MessageProducer for each call the create a MessageProducer.
+     *
+     * @param anonymousProducers
+     *      Boolean value that configures whether anonymous producers are used.
+     */
+    public void setUseAnonymousProducers(boolean anonymousProducers) {
+        connectionConfig.setUseAnonymousProducers(anonymousProducers);
+    }
+
+    /**
+     * Returns the currently configured producer cache size that will be used in a pooled
+     * Session when the pooled Session is not configured to use a single anonymous producer.
+     *
+     * @return the current explicit producer cache size.
+     */
+    public int getExplicitProducerCacheSize() {
+        return connectionConfig.getExplicitProducerCacheSize();
+    }
+
+    /**
+     * Sets whether a pooled Session uses a cache for MessageProducer instances that are
+     * created against an explicit destination instead of creating new MessageProducer on each
+     * call to {@linkplain Session#createProducer(jakarta.jms.Destination)}.
+     * <p>
+     * When caching explicit producers the cache will hold up to the configured number of producers
+     * and if more producers are created than the configured cache size the oldest or lest recently
+     * used producers are evicted from the cache and will be closed when all references to that
+     * producer are explicitly closed or when the pooled session instance is closed.  By default this
+     * value is set to zero and no caching is done for explicit producers created by the pooled session.
+     * <p>
+     * This caching would only be done when the {@link #setUseAnonymousProducers(boolean)} configuration
+     * option is disabled.
+     *
+     * @param cacheSize
+     * 		The number of explicit producers to cache in the pooled Session
+     */
+    public void setExplicitProducerCacheSize(int cacheSize) {
+        connectionConfig.setExplicitProducerCacheSize(cacheSize);
+    }
+
+    /**
+     * Returns the timeout to use for blocking creating new sessions
      *
      * @return true if the pooled Connection createSession method will block when the limit is hit.
      *
      * @see #setBlockIfSessionPoolIsFull(boolean)
      */
-    public boolean isBlockIfSessionPoolIsFull() {
-        return blockIfSessionPoolIsFull;
+    public long getBlockIfSessionPoolIsFullTimeout() {
+        return connectionConfig.getBlockIfSessionPoolIsFullTimeout();
     }
+
+    /**
+     * Controls the behavior of the internal {@link Session} pool. By default the call to
+     * Connection.getSession() will block if the {@link Session} pool is full.  This setting
+     * will affect how long it blocks and throws an exception after the timeout.
+     * <p>
+     * The size of the session pool is controlled by the {@link #setMaxSessionsPerConnection(int)}
+     * value that has been configured.  Whether or not the call to create session blocks is controlled
+     * by the {@link #setBlockIfSessionPoolIsFull(boolean)} property.
+     * <p>
+     * By default the timeout defaults to -1 and a blocked call to create a Session will
+     * wait indefinitely for a new {@link Session}
+     *
+     * @param blockIfSessionPoolIsFullTimeout
+     * 		if blockIfSessionPoolIsFullTimeout is true then use this setting
+     *      to configure how long to block before an error is thrown.
+     *
+     * @see #setMaxSessionsPerConnection(int)
+     */
+    public void setBlockIfSessionPoolIsFullTimeout(long blockIfSessionPoolIsFullTimeout) {
+        connectionConfig.setBlockIfSessionPoolIsFullTimeout(blockIfSessionPoolIsFullTimeout);
+    }
+
+    /**
+     * @return if the pool is configured to assume connections are fault tolerant.
+     */
+    public boolean isFaultTolerantConnections() {
+        return connectionConfig.isFaultTolerantConnections();
+    }
+
+    /**
+     * Controls if the pool will consider the provider connection as being fault tolerant.
+     * <p>
+     * Some JMS providers can provide a connection that will perform reconnection and error
+     * handling in a generally transparent manner which would allow the pool to not close the
+     * provider connection on any call to the {@link ExceptionListener} the pool assigns to all
+     * pooled connections. This can reduce error handling needed in some client usage scenarios
+     * since it can be assumed that the connection remains open and usable regardless of any
+     * exception being thrown from JMS client APIs.
+     * <p>
+     * While this option is provided it can lead to broken connections being stuck in the pool
+     * and be loaned out to client code with no means of closing them down and recovering. The
+     * user who activates this configuration option assumes the risk here and must ensure that
+     * all cases where the provider connection might still fail either due to configured reconnect
+     * limits or because of fatal event that the providers server might issue are mitigated.
+     *
+     * @param faultTolerantConnections
+     * 		Boolean value indicating if the pool should assume connection are fault tolerant.
+     */
+    public void setFaultTolerantConnections(boolean faultTolerantConnections) {
+        connectionConfig.setFaultTolerantConnections(faultTolerantConnections);
+    }
+
+    //----- Connection Factory Configuration -------------------------------------------//
 
     /**
      * Returns the maximum number to pooled Connections that this factory will allow before it
@@ -414,91 +577,10 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     }
 
     /**
-     * Gets the idle timeout value applied to Connection's that are created by this pool but are
-     * not currently in use.
-     *
-     * @return the connection idle timeout value in (milliseconds).
+     * @return the number of milliseconds to sleep between runs of the connection check thread.
      */
-    public int getConnectionIdleTimeout() {
-        return connectionIdleTimeout;
-    }
-
-    /**
-     * Sets the idle timeout value for Connection's that are created by this pool but not in use in
-     * Milliseconds (defaults to 30 seconds).
-     * <p>
-     * For a Connection that is in the pool but has no current users the idle timeout determines how
-     * long the Connection can live before it is eligible for removal from the pool.  Normally the
-     * connections are tested when an attempt to check one out occurs so a Connection instance can sit
-     * in the pool much longer than its idle timeout if connections are used infrequently.  To evict idle
-     * connections in a more timely manner the {@link #setConnectionCheckInterval(long)} can be configured
-     * to a non-zero value and the pool will actively check for idle connections that have exceeded their
-     * idle timeout value.
-     *
-     * @param connectionIdleTimeout
-     *      The maximum time a pooled Connection can sit unused before it is eligible for removal.
-     *
-     * @see #setConnectionCheckInterval(long)
-     */
-    public void setConnectionIdleTimeout(int connectionIdleTimeout) {
-        this.connectionIdleTimeout = connectionIdleTimeout;
-    }
-
-    /**
-     * Should Sessions use one anonymous producer for all producer requests or should a new
-     * MessageProducer be created for each request to create a producer object, default is true.
-     * <p>
-     * When enabled the session only needs to allocate one MessageProducer for all requests and
-     * the MessageProducer#send(destination, message) method can be used.  Normally this is the
-     * right thing to do however it does result in the Broker not showing the producers per
-     * destination.
-     *
-     * @return true if a pooled Session will use only a single anonymous message producer instance.
-     */
-    public boolean isUseAnonymousProducers() {
-        return useAnonymousProducers;
-    }
-
-    /**
-     * Sets whether a pooled Session uses only one anonymous MessageProducer instance or creates
-     * a new MessageProducer for each call the create a MessageProducer.
-     *
-     * @param anonymousProducers
-     *      Boolean value that configures whether anonymous producers are used.
-     */
-    public void setUseAnonymousProducers(boolean anonymousProducers) {
-        this.useAnonymousProducers = anonymousProducers;
-    }
-
-    /**
-     * Returns the currently configured producer cache size that will be used in a pooled
-     * Session when the pooled Session is not configured to use a single anonymous producer.
-     *
-     * @return the current explicit producer cache size.
-     */
-    public int getExplicitProducerCacheSize() {
-        return explicitProducerCacheSize;
-    }
-
-    /**
-     * Sets whether a pooled Session uses a cache for MessageProducer instances that are
-     * created against an explicit destination instead of creating new MessageProducer on each
-     * call to {@linkplain Session#createProducer(jakarta.jms.Destination)}.
-     * <p>
-     * When caching explicit producers the cache will hold up to the configured number of producers
-     * and if more producers are created than the configured cache size the oldest or lest recently
-     * used producers are evicted from the cache and will be closed when all references to that
-     * producer are explicitly closed or when the pooled session instance is closed.  By default this
-     * value is set to zero and no caching is done for explicit producers created by the pooled session.
-     * <p>
-     * This caching would only be done when the {@link #setUseAnonymousProducers(boolean)} configuration
-     * option is disabled.
-     *
-     * @param cacheSize
-     * 		The number of explicit producers to cache in the pooled Session
-     */
-    public void setExplicitProducerCacheSize(int cacheSize) {
-        this.explicitProducerCacheSize = cacheSize;
+    public long getConnectionCheckInterval() {
+        return connectionCheckInterval;
     }
 
     /**
@@ -519,57 +601,6 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
         if (!isStopped()) {
             getConnectionsPool().setDurationBetweenEvictionRuns(Duration.ofMillis(connectionCheckInterval));
         }
-    }
-
-    /**
-     * @return the number of milliseconds to sleep between runs of the connection check thread.
-     */
-    public long getConnectionCheckInterval() {
-        return connectionCheckInterval;
-    }
-
-    /**
-     * @return the number of Connections currently in the Pool
-     */
-    public int getNumConnections() {
-        if (isStopped()) {
-            return 0;
-        } else {
-            return getConnectionsPool().getNumIdle();
-        }
-    }
-
-    /**
-     * Returns the timeout to use for blocking creating new sessions
-     *
-     * @return true if the pooled Connection createSession method will block when the limit is hit.
-     *
-     * @see #setBlockIfSessionPoolIsFull(boolean)
-     */
-    public long getBlockIfSessionPoolIsFullTimeout() {
-        return blockIfSessionPoolIsFullTimeout;
-    }
-
-    /**
-     * Controls the behavior of the internal {@link Session} pool. By default the call to
-     * Connection.getSession() will block if the {@link Session} pool is full.  This setting
-     * will affect how long it blocks and throws an exception after the timeout.
-     * <p>
-     * The size of the session pool is controlled by the {@link #setMaxSessionsPerConnection(int)}
-     * value that has been configured.  Whether or not the call to create session blocks is controlled
-     * by the {@link #setBlockIfSessionPoolIsFull(boolean)} property.
-     * <p>
-     * By default the timeout defaults to -1 and a blocked call to create a Session will
-     * wait indefinitely for a new {@link Session}
-     *
-     * @param blockIfSessionPoolIsFullTimeout
-     * 		if blockIfSessionPoolIsFullTimeout is true then use this setting
-     *      to configure how long to block before an error is thrown.
-     *
-     * @see #setMaxSessionsPerConnection(int)
-     */
-    public void setBlockIfSessionPoolIsFullTimeout(long blockIfSessionPoolIsFullTimeout) {
-        this.blockIfSessionPoolIsFullTimeout = blockIfSessionPoolIsFullTimeout;
     }
 
     /**
@@ -595,36 +626,6 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
         this.useProviderJMSContext = useProviderJMSContext;
     }
 
-    /**
-     * @return if the pool is configured to assume connections are fault tolerant.
-     */
-    public boolean isFaultTolerantConnections() {
-        return faultTolerantConnections;
-    }
-
-    /**
-     * Controls if the pool will consider the provider connection as being fault tolerant.
-     * <p>
-     * Some JMS providers can provide a connection that will perform reconnection and error
-     * handling in a generally transparent manner which would allow the pool to not close the
-     * provider connection on any call to the {@link ExceptionListener} the pool assigns to all
-     * pooled connections. This can reduce error handling needed in some client usage scenarios
-     * since it can be assumed that the connection remains open and usable regardless of any
-     * exception being thrown from JMS client APIs.
-     * <p>
-     * While this option is provided it can lead to broken connections being stuck in the pool
-     * and be loaned out to client code with no means of closing them down and recovering. The
-     * user who activates this configuration option assumes the risk here and must ensure that
-     * all cases where the provider connection might still fail either due to configured reconnect
-     * limits or because of fatal event that the providers server might issue are mitigated.
-     *
-     * @param faultTolerantConnections
-     * 		Boolean value indicating if the pool should assume connection are fault tolerant.
-     */
-    public void setFaultTolerantConnections(boolean faultTolerantConnections) {
-        this.faultTolerantConnections = faultTolerantConnections;
-    }
-
     //----- Internal implementation ------------------------------------------//
 
     GenericKeyedObjectPool<JmsPoolConnectionKey, JmsPoolSharedConnection> getConnectionsPool() {
@@ -636,23 +637,10 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
                 new KeyedPooledObjectFactory<JmsPoolConnectionKey, JmsPoolSharedConnection>() {
                     @Override
                     public PooledObject<JmsPoolSharedConnection> makeObject(JmsPoolConnectionKey connectionKey) throws Exception {
-                        Connection delegate = createProviderConnection(connectionKey);
-
-                        JmsPoolSharedConnection connection = createPooledConnection(delegate);
-                        connection.setIdleTimeout(getConnectionIdleTimeout());
-                        connection.setMaxSessionsPerConnection(getMaxSessionsPerConnection());
-                        connection.setMaxIdleSessionsPerConnection(
-                            Math.min(getMaxIdleSessionsPerConnection(), getMaxSessionsPerConnection()));
-                        connection.setBlockIfSessionPoolIsFull(isBlockIfSessionPoolIsFull());
-                        if (isBlockIfSessionPoolIsFull() && getBlockIfSessionPoolIsFullTimeout() > 0) {
-                            connection.setBlockIfSessionPoolIsFullTimeout(getBlockIfSessionPoolIsFullTimeout());
-                        }
-                        connection.setUseAnonymousProducers(isUseAnonymousProducers());
-                        connection.setExplicitProducerCacheSize(getExplicitProducerCacheSize());
-                        connection.setFaultTolerantConnection(isFaultTolerantConnections());
+                        final Connection delegate = createProviderConnection(connectionKey);
+                        final JmsPoolSharedConnection connection = createPooledConnection(connectionConfig.snapshot(), delegate);
 
                         LOG.trace("Created new connection: {}", connection);
-
                         JmsPoolConnectionFactory.this.mostRecentlyCreated.set(connection);
 
                         return new DefaultPooledObject<JmsPoolSharedConnection>(connection);
@@ -660,7 +648,8 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
 
                     @Override
                     public void destroyObject(JmsPoolConnectionKey connectionKey, PooledObject<JmsPoolSharedConnection> pooledObject) throws Exception {
-                        JmsPoolSharedConnection connection = pooledObject.getObject();
+                        final JmsPoolSharedConnection connection = pooledObject.getObject();
+
                         try {
                             LOG.trace("Destroying connection: {}", connection);
                             connection.close();
@@ -671,7 +660,8 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
 
                     @Override
                     public boolean validateObject(JmsPoolConnectionKey connectionKey, PooledObject<JmsPoolSharedConnection> pooledObject) {
-                        JmsPoolSharedConnection connection = pooledObject.getObject();
+                        final JmsPoolSharedConnection connection = pooledObject.getObject();
+
                         if (connection == null || connection.idleTimeoutCheck() || connection.isClosed()) {
                             LOG.trace("Connection has expired or was closed: {} and will be destroyed", connection);
                             return false;
@@ -726,16 +716,18 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     }
 
     /**
-     * Delegate that creates each instance of an ConnectionPool object.  Subclasses can override
+     * Delegate that creates each instance of an ConnectionPool object. Subclasses can override
      * this method to customize the type of connection pool returned.
      *
+     * @param configuration
+     * 		The configuration to assign to the newly created shared connection instance.
      * @param connection
      * 		The connection that is being added into the pool.
      *
      * @return instance of a new ConnectionPool.
      */
-    protected JmsPoolSharedConnection createPooledConnection(Connection connection) {
-        return new JmsPoolSharedConnection(connection);
+    protected JmsPoolSharedConnection createPooledConnection(JmsPoolConnectionConfiguration configuration, Connection connection) {
+        return new JmsPoolSharedConnection(connectionConfig, connection);
     }
 
     /**

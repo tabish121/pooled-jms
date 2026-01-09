@@ -48,9 +48,8 @@ import jakarta.jms.TopicSession;
 final class JmsPoolSharedSession {
 
     private final JmsPoolSharedConnection connection;
+    private final JmsPoolConnectionConfiguration configuration;
     private final Session session;
-
-    private final boolean useAnonymousProducer;
 
     private volatile MessageProducer anonymousProducer;
     private volatile TopicPublisher anonymousPublisher;
@@ -60,15 +59,15 @@ final class JmsPoolSharedSession {
     private final Map<Destination, JmsPoolTopicPublisher> cachedPublishers;
     private final Map<Destination, JmsPoolQueueSender> cachedSenders;
 
-    public JmsPoolSharedSession(JmsPoolSharedConnection connection, Session session, boolean useAnonymousProducer, int namedProducerCacheSize) {
+    public JmsPoolSharedSession(JmsPoolSharedConnection connection, JmsPoolConnectionConfiguration configuration, Session session) {
+        this.configuration = configuration;
         this.connection = connection;
         this.session = session;
-        this.useAnonymousProducer = useAnonymousProducer;
 
-        if (!useAnonymousProducer && namedProducerCacheSize > 0) {
-            cachedProducers = new ProducerLRUCache<>(namedProducerCacheSize);
-            cachedPublishers = new ProducerLRUCache<>(namedProducerCacheSize);
-            cachedSenders = new ProducerLRUCache<>(namedProducerCacheSize);
+        if (!configuration.isUseAnonymousProducers() && configuration.getExplicitProducerCacheSize() > 0) {
+            cachedProducers = new ProducerLRUCache<>(configuration.getExplicitProducerCacheSize());
+            cachedPublishers = new ProducerLRUCache<>(configuration.getExplicitProducerCacheSize());
+            cachedSenders = new ProducerLRUCache<>(configuration.getExplicitProducerCacheSize());
         } else {
             cachedProducers = DiscardingMap.getInstance();
             cachedPublishers = DiscardingMap.getInstance();
@@ -251,7 +250,7 @@ final class JmsPoolSharedSession {
     }
 
     public boolean isUseAnonymousProducer() {
-        return useAnonymousProducer;
+        return configuration.isUseAnonymousProducers();
     }
 
     @Override

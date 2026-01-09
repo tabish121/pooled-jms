@@ -37,8 +37,8 @@ class JmsPoolSharedXAConnection extends JmsPoolSharedConnection {
 
     private final TransactionManager transactionManager;
 
-    public JmsPoolSharedXAConnection(Connection connection, TransactionManager transactionManager) {
-        super(connection);
+    public JmsPoolSharedXAConnection(JmsPoolConnectionConfiguration configuration, Connection connection, TransactionManager transactionManager) {
+        super(configuration, connection);
 
         this.transactionManager = transactionManager;
     }

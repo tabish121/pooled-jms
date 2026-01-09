@@ -35,6 +35,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
 import jakarta.jms.ConnectionMetaData;
 import jakarta.jms.ExceptionListener;
 import jakarta.jms.IllegalStateException;
@@ -62,20 +63,18 @@ class JmsPoolSharedConnection implements ExceptionListener {
     private final Queue<ExceptionListener> exceptionListeners = new ConcurrentLinkedQueue<>();
     private final String connectionId;
     private final ReferenceCount referenceCount = new ReferenceCount();
+    private final JmsPoolConnectionConfiguration configuration;
 
     protected Connection connection;
 
     private long lastUsed = System.currentTimeMillis();
     private boolean hasExpired;
-    private int idleTimeout = 30_000;
-    private boolean useAnonymousProducers = true;
-    private int explicitProducerCacheSize;
     private int jmsMajorVersion = 1;
     private int jmsMinorVersion = 1;
-    private boolean faultTolerantConnection;
     private ExceptionListener connectionFactoryExceptionListener;
 
-    public JmsPoolSharedConnection(Connection connection) {
+    public JmsPoolSharedConnection(JmsPoolConnectionConfiguration configuration, Connection connection) {
+        this.configuration = configuration;
         this.connection = connection;
         this.connectionId = connection.toString();
 
@@ -105,6 +104,14 @@ class JmsPoolSharedConnection implements ExceptionListener {
         final GenericKeyedObjectPoolConfig<JmsPoolSharedSession> poolConfig = new GenericKeyedObjectPoolConfig<>();
         poolConfig.setJmxEnabled(false);
         poolConfig.setTestOnBorrow(true);
+        poolConfig.setMaxTotalPerKey(configuration.getMaxSessionsPerConnection());
+        poolConfig.setMaxIdlePerKey(
+            Math.min(configuration.getMaxIdleSessionsPerConnection(), configuration.getMaxSessionsPerConnection()));
+        poolConfig.setBlockWhenExhausted(configuration.isBlockIfSessionPoolIsFull());
+
+        if (configuration.isBlockIfSessionPoolIsFull() && configuration.getBlockIfSessionPoolIsFullTimeout() > 0) {
+            poolConfig.setMaxWait(Duration.ofMillis(configuration.getBlockIfSessionPoolIsFullTimeout()));
+        }
 
         // Create our internal Pool of session instances.
         sessionPool = new GenericKeyedObjectPool<JmsPoolSessionKey, JmsPoolSharedSession>(
@@ -113,7 +120,7 @@ class JmsPoolSharedConnection implements ExceptionListener {
                 @Override
                 public PooledObject<JmsPoolSharedSession> makeObject(JmsPoolSessionKey sessionKey) throws Exception {
                     return new DefaultPooledObject<JmsPoolSharedSession>(
-                        new JmsPoolSharedSession(JmsPoolSharedConnection.this, makeSession(sessionKey), useAnonymousProducers, explicitProducerCacheSize));
+                        new JmsPoolSharedSession(JmsPoolSharedConnection.this, configuration, makeSession(sessionKey)));
                 }
 
                 @Override
@@ -214,54 +221,6 @@ class JmsPoolSharedConnection implements ExceptionListener {
         return connection == null;
     }
 
-    public int getIdleTimeout() {
-        return idleTimeout;
-    }
-
-    public void setIdleTimeout(int idleTimeout) {
-        this.idleTimeout = idleTimeout;
-    }
-
-    public int getMaxSessionsPerConnection() {
-        return sessionPool.getMaxTotalPerKey();
-    }
-
-    public void setMaxSessionsPerConnection(int maxActiveSessionsPerConnection) {
-        sessionPool.setMaxTotalPerKey(maxActiveSessionsPerConnection);
-    }
-
-    public int getMaxIdleSessionsPerConnection() {
-        return sessionPool.getMaxIdlePerKey();
-    }
-
-    public void setMaxIdleSessionsPerConnection(int maxIdleSessionsPerConnection) {
-        sessionPool.setMaxIdlePerKey(maxIdleSessionsPerConnection);
-    }
-
-    public boolean isUseAnonymousProducers() {
-        return useAnonymousProducers;
-    }
-
-    public void setUseAnonymousProducers(boolean value) {
-        useAnonymousProducers = value;
-    }
-
-    public int getExplicitProducerCacheSize() {
-        return explicitProducerCacheSize;
-    }
-
-    public void setExplicitProducerCacheSize(int cacheSize) {
-        explicitProducerCacheSize = cacheSize;
-    }
-
-    public boolean isFaultTolerantConnection() {
-        return faultTolerantConnection;
-    }
-
-    public void setFaultTolerantConnection(boolean faultTolerantConnection) {
-        this.faultTolerantConnection = faultTolerantConnection;
-    }
-
     /**
      * @return the total number of Pooled session including idle sessions that are not
      *          currently loaned out to any client.
@@ -285,50 +244,6 @@ class JmsPoolSharedConnection implements ExceptionListener {
     }
 
     /**
-     * Configure whether the createSession method should block when there are no more idle sessions and the
-     * pool already contains the maximum number of active sessions.  If false the create method will fail
-     * and throw an exception.
-     *
-     * @param block
-     * 		Indicates whether blocking should be used to wait for more space to create a session.
-     */
-    public void setBlockIfSessionPoolIsFull(boolean block) {
-        sessionPool.setBlockWhenExhausted(block);
-    }
-
-    public boolean isBlockIfSessionPoolIsFull() {
-        return sessionPool.getBlockWhenExhausted();
-    }
-
-    /**
-     * Returns the timeout to use for blocking creating new sessions
-     *
-     * @return true if the pooled Connection createSession method will block when the limit is hit.
-     * @see #setBlockIfSessionPoolIsFull(boolean)
-     */
-    public long getBlockIfSessionPoolIsFullTimeout() {
-        return sessionPool.getMaxWaitDuration().toMillis();
-    }
-
-    /**
-     * Controls the behavior of the internal session pool. By default the call to
-     * Connection.getSession() will block if the session pool is full.  This setting
-     * will affect how long it blocks and throws an exception after the timeout.
-     *
-     * The size of the session pool is controlled by the @see #maximumActive
-     * property.
-     *
-     * Whether or not the call to create session blocks is controlled by the @see #blockIfSessionPoolIsFull
-     * property
-     *
-     * @param blockIfSessionPoolIsFullTimeout - if blockIfSessionPoolIsFullTimeout is true,
-     *                                        then use this setting to configure how long to block before retry
-     */
-    public void setBlockIfSessionPoolIsFullTimeout(long blockIfSessionPoolIsFullTimeout) {
-        sessionPool.setMaxWait(Duration.ofMillis(blockIfSessionPoolIsFullTimeout));
-    }
-
-    /**
      * Checks for JMS version support in the underlying JMS Connection this pooled connection
      * wrapper encapsulates.
      *
@@ -343,10 +258,22 @@ class JmsPoolSharedConnection implements ExceptionListener {
         return jmsMajorVersion >= requiredMajor && jmsMinorVersion >= requiredMinor;
     }
 
+    /**
+     * {@return the ExceptionListener that was assigned to the connection factory at create of this connection}
+     */
     public ExceptionListener getConnectionFactoryExceptionListener() {
         return connectionFactoryExceptionListener;
     }
 
+    /**
+     * The {@link ExceptionListener} that was assigned to the pooled {@link ConnectionFactory} at the
+     * time this {@link Connection} was created. This listener will be called for any exception that the
+     * client library signals regardless of any loaned connection wrappers having their own exception
+     * listeners registered.
+     *
+     * @param parentExceptionListener
+     * 	The {@link ExceptionListener} that will be called for any exception from the client connection.
+     */
     public void setConnectionFactoryExceptionListener(ExceptionListener parentExceptionListener) {
         this.connectionFactoryExceptionListener = parentExceptionListener;
     }
@@ -358,7 +285,7 @@ class JmsPoolSharedConnection implements ExceptionListener {
 
         // Closes the underlying connection and removes it from the pool if not configured
         // to assume the connection is fault tolerant and can recover on its own.
-        if (!isFaultTolerantConnection()) {
+        if (!configuration.isFaultTolerantConnections()) {
             close();
         }
 
@@ -442,6 +369,8 @@ class JmsPoolSharedConnection implements ExceptionListener {
         if (connection == null || hasExpired) {
             return true;
         }
+
+        final int idleTimeout = configuration.getConnectionIdleTimeout();
 
         // Only set hasExpired here if no references, as a Connection with references is by
         // definition not idle at this time.
