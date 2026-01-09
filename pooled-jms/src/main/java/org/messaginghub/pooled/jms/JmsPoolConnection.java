@@ -295,7 +295,7 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, Auto
             try {
                 tempQueue.delete();
             } catch (JMSException ex) {
-                LOG.info("failed to delete Temporary Queue \"" + tempQueue.toString() + "\" on closing pooled connection: " + ex.getMessage());
+                LOG.info("failed to delete Temporary Queue \"" + tempQueue + "\" on closing pooled connection: " + ex.getMessage());
             }
 
             return true;
@@ -305,7 +305,7 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, Auto
             try {
                 tempTopic.delete();
             } catch (JMSException ex) {
-                LOG.info("failed to delete Temporary Topic \"" + tempTopic.toString() + "\" on closing pooled connection: " + ex.getMessage());
+                LOG.info("failed to delete Temporary Topic \"" + tempTopic + "\" on closing pooled connection: " + ex.getMessage());
             }
 
             return true;
@@ -343,6 +343,12 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, Auto
         public void onTemporaryQueueCreate(TemporaryQueue tempQueue) {
             if (!isClosed()) {
                 managedTempQueues.add(tempQueue);
+            } else {
+                try {
+                    tempQueue.delete(); // Race on close and create requires delete to avoid a leak
+                } catch (Exception ex) {
+                    LOG.debug("failed to delete Temporary Queue \"" + tempQueue + "\" on closing pooled connection: " + ex.getMessage());
+                }
             }
         }
 
@@ -350,6 +356,12 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, Auto
         public void onTemporaryTopicCreate(TemporaryTopic tempTopic) {
             if (!isClosed()) {
                 managedTempTopics.add(tempTopic);
+            } else {
+                try {
+                    tempTopic.delete(); // Race on close and create requires delete to avoid a leak
+                } catch (Exception ex) {
+                    LOG.debug("failed to delete Temporary Topic \"" + tempTopic + "\" on closing pooled connection: " + ex.getMessage());
+                }
             }
         }
 
@@ -357,6 +369,12 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, Auto
         public void onSessionClosed(JmsPoolSession session) {
             if (!isClosed()) {
                 managedSessions.remove(session);
+            } else {
+                try {
+                    session.close(); // Race on close and create requires session close to avoid a leak
+                } catch (JMSException ex) {
+                    LOG.debug("failed to close loaned Session \"" + session + "\" on closing pooled connection: " + ex.getMessage());
+                }
             }
         }
     }
