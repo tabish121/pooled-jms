@@ -206,7 +206,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     public JMSContext createContext(String username, String password, int sessionMode) {
         if (isStopped()) {
             LOG.debug("The pooling connection factory is stopped, skip create new connection.");
-            return null;
+            throw new IllegalStateRuntimeException("Cannot create a JMS context from a stopped pooled connection factory");
         }
 
         if (isUseProviderJMSContext()) {
@@ -233,6 +233,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     public synchronized void start() {
         if (STOPPED_UPDATER.weakCompareAndSet(this, 1, 0)) {
             LOG.debug("JMS Pooling connection factory start method called, no action performed.");
+            getConnectionsPool();
         }
     }
 
@@ -817,11 +818,11 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     private synchronized JmsPoolConnection createJmsPoolConnection(String userName, String password) throws JMSException {
         if (isStopped()) {
             LOG.debug("The JMS pooling connection factoring is stopped, skipping create new connection.");
-            return null;
+            throw new IllegalStateException("Cannot create a new JMS connection from a stopped pooled connection factory");
         }
 
         if (connectionFactory == null) {
-            throw new IllegalStateException("No ConnectionFactory instance has been configured");
+            throw new IllegalStateException("No JMS client ConnectionFactory instance has been configured");
         }
 
         JmsPoolSharedConnection connection = null;

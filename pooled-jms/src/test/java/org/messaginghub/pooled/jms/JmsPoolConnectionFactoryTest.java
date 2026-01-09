@@ -256,7 +256,7 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         cf.stop();
 
         assertEquals(0, cf.getNumConnections());
-        assertNull(cf.createConnection());
+        assertThrows(IllegalStateException.class, () -> cf.createConnection());
         assertEquals(0, cf.getNumConnections());
 
         cf.start();
@@ -279,7 +279,7 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         assertEquals(100, cf.getMaxConnections());
         assertEquals(1000, cf.getConnectionCheckInterval());
         assertEquals(0, cf.getNumConnections());
-        assertNull(cf.createConnection());
+        assertThrows(IllegalStateException.class, () -> cf.createConnection());
         assertEquals(0, cf.getNumConnections());
 
         cf.start();
@@ -301,7 +301,7 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         cf.stop();
 
         assertEquals(0, cf.getNumConnections());
-        assertNull(cf.createContext());
+        assertThrows(IllegalStateRuntimeException.class, () -> cf.createContext());
         assertEquals(0, cf.getNumConnections());
 
         cf.start();
@@ -323,7 +323,7 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
 
         cf.stop();
 
-        assertNull(cf.createConnection());
+        assertThrows(IllegalStateException.class, () -> cf.createConnection());
 
         cf.start();
 

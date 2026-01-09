@@ -18,18 +18,19 @@ package org.messaginghub.pooled.jms;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import jakarta.jms.Connection;
-import jakarta.jms.QueueConnectionFactory;
-import jakarta.jms.TopicConnectionFactory;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.Connection;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.TopicConnectionFactory;
 
 /**
  * Checks the behavior of the PooledConnectionFactory when the maximum amount of
@@ -107,7 +108,7 @@ public class PooledConnectionFactoryTest extends ArtemisJmsPoolTestSupport {
 
         cf.stop();
 
-        assertNull(cf.createConnection());
+        assertThrows(IllegalStateException.class, () -> cf.createConnection());
 
         cf.start();
 
