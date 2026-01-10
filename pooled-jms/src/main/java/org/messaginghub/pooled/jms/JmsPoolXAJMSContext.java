@@ -28,7 +28,7 @@ import jakarta.jms.XAJMSContext;
  */
 public class JmsPoolXAJMSContext extends JmsPoolJMSContext implements XAJMSContext {
 
-    public JmsPoolXAJMSContext(JmsPoolConnection connection, int sessionMode) {
+    JmsPoolXAJMSContext(JmsPoolConnection connection, int sessionMode) {
         super(connection, sessionMode);
     }
 

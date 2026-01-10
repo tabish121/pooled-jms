@@ -29,6 +29,9 @@ public class LRUCache<K, V> extends LinkedHashMap<K, V> {
 
     private static final long serialVersionUID = -342098639681884413L;
 
+    /**
+     * The maximum number of entries that will be cached which default to 10,000
+     */
     protected int maxCacheSize = 10000;
 
     /**

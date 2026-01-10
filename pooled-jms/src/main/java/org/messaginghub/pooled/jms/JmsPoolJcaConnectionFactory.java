@@ -29,7 +29,17 @@ public class JmsPoolJcaConnectionFactory extends JmsPoolXAConnectionFactory {
     private String name;
 
     /**
-     * {@return the name assigned to this JCA ConnectionFactory}
+     * Creates the pooling connection factory in the started state but the application must configure
+     * a backing {@link ConnectionFactory} before using any method in this object.
+     */
+    public JmsPoolJcaConnectionFactory() {
+        super();
+    }
+
+    /**
+     * Gets the name that was configured for this JCA {@link ConnectionFactory}
+     *
+     * @return the name assigned to this JCA ConnectionFactory
      */
     public String getName() {
         return name;

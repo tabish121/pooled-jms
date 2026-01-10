@@ -52,7 +52,7 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
     private long timeToLive;
     private long deliveryDelay;
 
-    public JmsPoolMessageProducer(JmsPoolSession session, MessageProducer messageProducer, Destination destination, AtomicInteger refCount) throws JMSException {
+    JmsPoolMessageProducer(JmsPoolSession session, MessageProducer messageProducer, Destination destination, AtomicInteger refCount) throws JMSException {
         this.session = session;
         this.messageProducer = messageProducer;
         this.destination = destination;

@@ -36,15 +36,7 @@ public class JmsPoolQueueBrowser implements QueueBrowser, AutoCloseable {
     private final QueueBrowser delegate;
     private volatile int closed;
 
-    /**
-     * Wraps the QueueBrowser.
-     *
-     * @param session
-     * 		the pooled session that created this object.
-     * @param delegate
-     * 		the created QueueBrowser to wrap.
-     */
-    public JmsPoolQueueBrowser(JmsPoolSession session, QueueBrowser delegate) {
+    JmsPoolQueueBrowser(JmsPoolSession session, QueueBrowser delegate) {
         this.session = session;
         this.delegate = delegate;
     }
@@ -81,12 +73,22 @@ public class JmsPoolQueueBrowser implements QueueBrowser, AutoCloseable {
         return getClass().getSimpleName() + " { " + getDelegate() + " }";
     }
 
+    /**
+     * Provides access to the wrapped JMS {@link QueueBrowser} and is meant primarily as a
+     * test point and the application logic should not depend on this method.
+     *
+     * @return the wrapped JMS {@link QueueBrowser}.
+     *
+     * @throws JMSException if an error occurs while accessing the wrapped resource.
+     */
     public QueueBrowser getQueueBrowser() throws JMSException {
         checkClosed();
         return delegate;
     }
 
     /**
+     * Provides access to the wrapped {@link QueueBrowser} wihtout state checks.
+     *
      * @return the underlying {@link QueueBrowser} that this wrapper object is a proxy to.
      */
     QueueBrowser getDelegate() {

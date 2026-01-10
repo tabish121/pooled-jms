@@ -55,14 +55,18 @@ public final class ReferenceCount {
     }
 
     /**
-     * {@return true if the reference count value is equal to the minimum value (default is zero)}
+     * Checks if this reference count instance in now unreferenced.
+     *
+     * @return true if the reference count value is equal to the minimum value (default is zero)
      */
     public boolean isUnreferenced() {
         return count == minValue;
     }
 
     /**
-     * {@return the current value of the reference count}
+     * Gets the current reference count value for this instance.
+     *
+     * @return the current value of the reference count
      */
     public int getCount() {
         return count;

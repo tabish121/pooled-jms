@@ -259,7 +259,9 @@ class JmsPoolSharedConnection implements ExceptionListener {
     }
 
     /**
-     * {@return the ExceptionListener that was assigned to the connection factory at create of this connection}
+     * Gets the currently assigned {@link ExceptionListener} that was assigned from the connection factory.
+     *
+     * @return the ExceptionListener that was assigned to the connection factory at create of this connection
      */
     public ExceptionListener getConnectionFactoryExceptionListener() {
         return connectionFactoryExceptionListener;

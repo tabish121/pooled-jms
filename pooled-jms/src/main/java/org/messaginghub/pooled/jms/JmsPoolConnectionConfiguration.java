@@ -129,7 +129,11 @@ class JmsPoolConnectionConfiguration {
     }
 
     /**
-     * (@return an immutable snapshot of the current state of the connection configuration}
+     * Creates a snapshot of this configuration instance and returns an immutable variant
+     * of this configuration class. Any attempt to set new values on the returned instance
+     * will throw an {@link UnsupportedOperationException}.
+     *
+     * @return an immutable snapshot of the current state of the connection configuration
      */
     public JmsPoolConnectionConfiguration snapshot() {
         return new JmsPoolUnmodifiableConnectionConfiguration(this);

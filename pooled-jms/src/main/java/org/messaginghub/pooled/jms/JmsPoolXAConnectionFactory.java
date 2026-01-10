@@ -33,6 +33,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
 import jakarta.jms.JMSException;
 import jakarta.jms.XAConnection;
 import jakarta.jms.XAConnectionFactory;
@@ -51,6 +52,14 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
     private TransactionManager transactionManager;
     private boolean tmFromJndi = false;
     private String tmJndiName = "java:/TransactionManager";
+
+    /**
+     * Creates the pooling connection factory in the started state but the application must configure
+     * a backing {@link ConnectionFactory} before using any method in this object.
+     */
+    public JmsPoolXAConnectionFactory() {
+        super();
+    }
 
     /**
      * Gets the assigned {@link TransactionManager} this connection factory will use when creating
@@ -158,14 +167,30 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
         }
     }
 
+    /**
+     * Gets the assigned JNDI name for this pooled {@link XAConnectionFactory} instance.
+     *
+     * @return the configured JNDI name for this {@link XAConnectionFactory}
+     */
     public String getTmJndiName() {
         return tmJndiName;
     }
 
+    /**
+     * Sets the assigned JNDI name for this pooled {@link XAConnectionFactory} instance.
+     *
+     * @param tmJndiName
+     * 	The assigned JNDI name for the {@link XAConnectionFactory}.
+     */
     public void setTmJndiName(String tmJndiName) {
         this.tmJndiName = tmJndiName;
     }
 
+    /**
+     * Gets if this factory is resolved from JNDI
+     *
+     * @return <code>true</code> if configured for resolution from JNDI.
+     */
     public boolean isTmFromJndi() {
         return tmFromJndi;
     }

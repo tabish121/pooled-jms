@@ -58,7 +58,14 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, Auto
     private static final AtomicIntegerFieldUpdater<JmsPoolConnection> CLOSED_UPDATER =
         AtomicIntegerFieldUpdater.newUpdater(JmsPoolConnection.class, "closed");
 
+    /**
+     * The wrapped connection which can become null once the wrapper is closed.
+     */
     protected JmsPoolSharedConnection connection;
+
+    /**
+     * An exception listener assigned by the parent pooled connection factory.
+     */
     protected volatile ExceptionListener connectionExceptionListener;
 
     private volatile int closed;
@@ -234,6 +241,8 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, Auto
     //----- Metrics APIs -----------------------------------------------------//
 
     /**
+     * Gets the total number of sessions managed by this connection wrapper.
+     *
      * @return the total number of Pooled session including idle sessions that are not
      *          currently loaned out to any client.
      *
@@ -245,6 +254,8 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, Auto
     }
 
     /**
+     * Gets the current number of active sessions loaned out by this wrapped connection.
+     *
      * @return the number of Sessions that are currently checked out of this Connection's session pool.
      *
      * @throws JMSException if the connection has been closed.
@@ -255,6 +266,8 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, Auto
     }
 
     /**
+     * Gets the number of idle sessions managed by this connection wrapper.
+     *
      * @return the number of Sessions that are idle in this Connection's sessions pool.
      *
      * @throws JMSException if the connection has been closed.
@@ -266,10 +279,20 @@ public class JmsPoolConnection implements TopicConnection, QueueConnection, Auto
 
     //----- Internal support methods -----------------------------------------//
 
+    /**
+     * Gets the state of the connection closed flag.
+     *
+     * @return <code>true</code> if the connection has been closed.
+     */
     protected boolean isClosed() {
         return closed > 0;
     }
 
+    /**
+     * Checks for closure of this connection wrapper and throws if true.
+     *
+     * @throws IllegalStateException if the connection is closed.
+     */
     protected void checkClosed() throws IllegalStateException {
         if (isClosed()) {
             throw new IllegalStateException("Connection has already been closed");

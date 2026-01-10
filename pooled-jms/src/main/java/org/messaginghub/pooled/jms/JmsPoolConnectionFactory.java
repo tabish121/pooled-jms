@@ -128,6 +128,14 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     private final JmsPoolConnectionConfiguration connectionConfig = new JmsPoolConnectionConfiguration();
 
     /**
+     * Creates the pooling connection factory in the started state but the application must configure
+     * a backing {@link ConnectionFactory} before using any method in this object.
+     */
+    public JmsPoolConnectionFactory() {}
+
+    /**
+     * Gets the configured {@link ConnectionFactory} that is used when new {@link Connection} instance are added to the pool.
+     *
      * @return the currently configured ConnectionFactory used to create the pooled Connections.
      */
     public Object getConnectionFactory() {
@@ -259,7 +267,9 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     }
 
     /**
-     * {@return <code>true</code> if the JMS connection pool is stopped at the time of this call}
+     * Checks if the {@link ConnectionFactory} has been stopped.
+     *
+     * @return <code>true</code> if the JMS connection pool is stopped at the time of this call.
      */
     public boolean isStopped() {
         return stopped != 0;
@@ -280,6 +290,8 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     }
 
     /**
+     * Gets the number of connections currently in the pool at the time of this call.
+     *
      * @return the number of Connections currently in the Pool if started, otherwise returns zero.
      */
     public int getNumConnections() {
@@ -518,6 +530,8 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     }
 
     /**
+     * Gets the configured value for the fault tolerance of pooled connections.
+     *
      * @return if the pool is configured to assume connections are fault tolerant.
      */
     public boolean isFaultTolerantConnections() {
@@ -577,6 +591,8 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     }
 
     /**
+     * Gets the currently configured connection check interval for this connection factory.
+     *
      * @return the number of milliseconds to sleep between runs of the connection check thread.
      */
     public long getConnectionCheckInterval() {
@@ -604,6 +620,9 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     }
 
     /**
+     * Checks if this pooled {@link ConnectionFactory} is creating its own {@link JMSContext} instances around
+     * pooled connections or if the contexts from the configured provider are used unpooled.
+     *
      * @return the true if the pool is using the provider's JMSContext instead of a pooled version.
      */
     public boolean isUseProviderJMSContext() {

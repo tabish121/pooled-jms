@@ -127,7 +127,9 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
     }
 
     /**
-     * {@return the internal JMS message consumer with no validation logic}
+     * Gets the underlying MessageConsumer without performing any state checks.
+     *
+     * @return the internal JMS message consumer with no validation logic
      */
     protected MessageConsumer getDelegate() {
         return messageConsumer;

@@ -29,7 +29,7 @@ import jakarta.jms.QueueSender;
  */
 public class JmsPoolQueueSender extends JmsPoolMessageProducer implements QueueSender, AutoCloseable {
 
-    public JmsPoolQueueSender(JmsPoolSession session, QueueSender messageProducer, Destination destination, AtomicInteger refCount) throws JMSException {
+    JmsPoolQueueSender(JmsPoolSession session, QueueSender messageProducer, Destination destination, AtomicInteger refCount) throws JMSException {
         super(session, messageProducer, destination, refCount);
     }
 
@@ -53,6 +53,14 @@ public class JmsPoolQueueSender extends JmsPoolMessageProducer implements QueueS
         return getClass().getSimpleName() + " { " + getDelegate() + " }";
     }
 
+    /**
+     * Provides access to the wrapped JMS {@link QueueSender} and is meant primarily as a
+     * test point and the application logic should not depend on this method.
+     *
+     * @return the wrapped JMS {@link QueueSender}.
+     *
+     * @throws JMSException if an error occurs while accessing the wrapped resource.
+     */
     public QueueSender getQueueSender() throws JMSException {
         return (QueueSender) getMessageProducer();
     }

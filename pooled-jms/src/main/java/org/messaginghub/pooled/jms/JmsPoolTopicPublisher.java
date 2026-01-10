@@ -29,7 +29,7 @@ import jakarta.jms.TopicPublisher;
  */
 public class JmsPoolTopicPublisher extends JmsPoolMessageProducer implements TopicPublisher, AutoCloseable {
 
-    public JmsPoolTopicPublisher(JmsPoolSession session, TopicPublisher messageProducer, Destination destination, AtomicInteger refCount) throws JMSException {
+    JmsPoolTopicPublisher(JmsPoolSession session, TopicPublisher messageProducer, Destination destination, AtomicInteger refCount) throws JMSException {
         super(session, messageProducer, destination, refCount);
     }
 
@@ -63,6 +63,14 @@ public class JmsPoolTopicPublisher extends JmsPoolMessageProducer implements Top
         return getClass().getSimpleName() + " { " + getDelegate() + " }";
     }
 
+    /**
+     * Provides access to the wrapped JMS {@link TopicPublisher} and is meant primarily as a
+     * test point and the application logic should not depend on this method.
+     *
+     * @return the wrapped JMS {@link TopicPublisher}.
+     *
+     * @throws JMSException if an error occurs while accessing the wrapped resource.
+     */
     public TopicPublisher getTopicPublisher() throws JMSException {
         return (TopicPublisher) getMessageProducer();
     }

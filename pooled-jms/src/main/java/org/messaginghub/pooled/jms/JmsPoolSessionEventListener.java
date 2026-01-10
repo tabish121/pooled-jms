@@ -16,9 +16,15 @@
  */
 package org.messaginghub.pooled.jms;
 
+import jakarta.jms.Session;
 import jakarta.jms.TemporaryQueue;
 import jakarta.jms.TemporaryTopic;
 
+/**
+ * An interface that provides event points for common {@link Session} level events
+ * that can be monitored. The event implementations should not throw exceptions from
+ * the handlers.
+ */
 public interface JmsPoolSessionEventListener {
 
     /**

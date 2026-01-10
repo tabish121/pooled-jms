@@ -82,7 +82,7 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
     private boolean ignoreClose;
     private boolean isXa;
 
-    public JmsPoolSession(JmsPoolSessionKey key, JmsPoolSharedSession sessionHolder, KeyedObjectPool<JmsPoolSessionKey, JmsPoolSharedSession> sessionPool, boolean transactional) {
+    JmsPoolSession(JmsPoolSessionKey key, JmsPoolSharedSession sessionHolder, KeyedObjectPool<JmsPoolSessionKey, JmsPoolSharedSession> sessionPool, boolean transactional) {
         this.key = key;
         this.sessionHolder = sessionHolder;
         this.sessionPool = sessionPool;
@@ -480,15 +480,15 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
         return safeGetSessionHolder().getSession();
     }
 
-    public void setIsXa(boolean isXa) {
+    void setIsXa(boolean isXa) {
         this.isXa = isXa;
     }
 
-    public boolean isIgnoreClose() {
+    boolean isIgnoreClose() {
         return ignoreClose;
     }
 
-    public void setIgnoreClose(boolean ignoreClose) {
+    void setIgnoreClose(boolean ignoreClose) {
         this.ignoreClose = ignoreClose;
     }
 

@@ -25,15 +25,7 @@ import jakarta.jms.QueueReceiver;
  */
 public class JmsPoolQueueReceiver extends JmsPoolMessageConsumer implements QueueReceiver, AutoCloseable {
 
-    /**
-     * Wraps the QueueReceiver.
-     *
-     * @param session
-     * 		the pooled session that created this object.
-     * @param delegate
-     * 		the created QueueReceiver to wrap.
-     */
-    public JmsPoolQueueReceiver(JmsPoolSession session, QueueReceiver delegate) {
+    JmsPoolQueueReceiver(JmsPoolSession session, QueueReceiver delegate) {
         super(session, delegate);
     }
 
@@ -47,6 +39,14 @@ public class JmsPoolQueueReceiver extends JmsPoolMessageConsumer implements Queu
         return getClass().getSimpleName() + " { " + getDelegate() + " }";
     }
 
+    /**
+     * Provides access to the wrapped JMS {@link QueueReceiver} and is meant primarily as a
+     * test point and the application logic should not depend on this method.
+     *
+     * @return the wrapped JMS {@link QueueReceiver}.
+     *
+     * @throws JMSException if an error occurs while accessing the wrapped resource.
+     */
     public QueueReceiver getQueueReceiver() throws JMSException {
         return (QueueReceiver) super.getMessageConsumer();
     }

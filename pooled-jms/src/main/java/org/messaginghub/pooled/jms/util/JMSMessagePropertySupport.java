@@ -28,6 +28,18 @@ public class JMSMessagePropertySupport {
 
     //----- Conversions Validation for Message Properties --------------------//
 
+    /**
+     * Attempts to convert a named property into a different type.
+     *
+     * @param <T> The return type after conversion
+     * @param name The name of the property whose value is being converted
+     * @param value The value to convert
+     * @param target The target type that the value is being transformed into.
+     *
+     * @return the new converted value type.
+     *
+     * @throws JMSException if an error occurs while performing the conversion
+     */
     @SuppressWarnings("unchecked")
     public static <T> T convertPropertyTo(String name, Object value, Class<T> target) throws JMSException {
         if (value == null) {
@@ -52,6 +64,15 @@ public class JMSMessagePropertySupport {
 
     //----- Property Name Validation Methods ---------------------------------//
 
+    /**
+     * Checks if the given JMS property name against constraints defined in the JMS specification with
+     * an option to only perform simple null and empty checks.
+     *
+     * @param propertyName
+     * 	The property name to check against the specification
+     * @param validateNames
+     * 	Should the name be validated against the specification or just simple null and empty checks be done
+     */
     public static void checkPropertyNameIsValid(String propertyName, boolean validateNames) throws IllegalArgumentException {
         if (propertyName == null) {
             throw new IllegalArgumentException("Property name must not be null");
@@ -66,6 +87,11 @@ public class JMSMessagePropertySupport {
         }
     }
 
+    /**
+     * Checks if the given identifier equals any string values that match logical operators.
+     *
+     * @param identifier The identifier to check
+     */
     public static void checkIdentifierIsntLogicOperator(String identifier) {
         // Identifiers cannot be NOT, AND, OR, BETWEEN, LIKE, IN, IS, or ESCAPE.
         if ("NOT".equals(identifier) || "AND".equals(identifier) || "OR".equals(identifier) ||
@@ -76,6 +102,11 @@ public class JMSMessagePropertySupport {
         }
     }
 
+    /**
+     * Checks if the given identifier equals any string values that match null, true or false.
+     *
+     * @param identifier The identifier to check
+     */
     public static void checkIdentifierIsntNullTrueFalse(String identifier) {
         // Identifiers cannot be the names NULL, TRUE, and FALSE.
         if ("NULL".equals(identifier) || "TRUE".equals(identifier) || "FALSE".equals(identifier)) {
@@ -83,6 +114,11 @@ public class JMSMessagePropertySupport {
         }
     }
 
+    /**
+     * Checks if the given identifier equals any string values that violates JMS letter and digit restrictions
+     *
+     * @param identifier The identifier to check
+     */
     public static void checkIdentifierLetterAndDigitRequirements(String identifier) {
         // An identifier is an unlimited-length sequence of letters and digits, the first of
         // which must be a letter.  A letter is any character for which the method
@@ -105,6 +141,13 @@ public class JMSMessagePropertySupport {
 
     //----- Property Type Validation Methods ---------------------------------//
 
+    /**
+     * Checks if the given value is a valid type for use in JMS properties
+     *
+     * @param value The value type to check for compliance.
+     *
+     * @throws MessageFormatException if any violations are found
+     */
     public static void checkValidObject(Object value) throws MessageFormatException {
         boolean valid = value instanceof Boolean ||
                         value instanceof Byte ||

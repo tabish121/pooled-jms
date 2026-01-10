@@ -26,6 +26,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
+
 import jakarta.jms.BytesMessage;
 import jakarta.jms.CompletionListener;
 import jakarta.jms.DeliveryMode;
@@ -39,8 +41,6 @@ import jakarta.jms.MessageFormatException;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.ObjectMessage;
 import jakarta.jms.TextMessage;
-
-import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
 
 /**
  * JMSProducer implementation back by a pooled Connection.
@@ -77,7 +77,7 @@ public class JmsPoolJMSProducer implements JMSProducer {
      * @param producer
      *      The shared MessageProducer owned by the parent Session.
      */
-    public JmsPoolJMSProducer(JmsPoolSession session, JmsPoolMessageProducer producer) {
+    JmsPoolJMSProducer(JmsPoolSession session, JmsPoolMessageProducer producer) {
         this.session = session;
         this.producer = producer;
     }
@@ -456,6 +456,14 @@ public class JmsPoolJMSProducer implements JMSProducer {
         return this;
     }
 
+    /**
+     * Gets the JMS {@link MessageProducer} that backs this JMS Producer instance. This is
+     * primarily meant as a test point and application logic should not depend on this method.
+     *
+     * @return the {@link MessageProducer} that backs this {@link JMSProducer}
+     *
+     * @throws JMSRuntimeException if an error occurs while accessing the backing producer.
+     */
     public MessageProducer getMessageProducer() throws JMSRuntimeException {
         try {
             return producer.getMessageProducer();

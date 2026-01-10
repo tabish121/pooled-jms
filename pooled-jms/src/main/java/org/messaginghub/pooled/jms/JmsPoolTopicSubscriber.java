@@ -25,15 +25,7 @@ import jakarta.jms.TopicSubscriber;
  */
 public class JmsPoolTopicSubscriber extends JmsPoolMessageConsumer implements TopicSubscriber, AutoCloseable {
 
-    /**
-     * Wraps the TopicSubscriber.
-     *
-     * @param session
-     * 		the pooled session that created this object.
-     * @param delegate
-     * 		the created QueueBrowser to wrap.
-     */
-    public JmsPoolTopicSubscriber(JmsPoolSession session, TopicSubscriber delegate) {
+    JmsPoolTopicSubscriber(JmsPoolSession session, TopicSubscriber delegate) {
         super(session, delegate);
     }
 
@@ -52,6 +44,14 @@ public class JmsPoolTopicSubscriber extends JmsPoolMessageConsumer implements To
         return getClass().getSimpleName() + " { " + getDelegate() + " }";
     }
 
+    /**
+     * Provides access to the wrapped JMS {@link TopicSubscriber} and is meant primarily as a
+     * test point and the application logic should not depend on this method.
+     *
+     * @return the wrapped JMS {@link TopicSubscriber}.
+     *
+     * @throws JMSException if an error occurs while accessing the wrapped resource.
+     */
     public TopicSubscriber getTopicSubscriber() throws JMSException {
         return (TopicSubscriber) super.getMessageConsumer();
     }

@@ -49,10 +49,12 @@ import jakarta.jms.Topic;
  */
 public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
+    /**
+     * Default value for the auto start flag of this JMS Context wrapper.
+     */
     public static boolean DEFAULT_JMS_CONTEXT_AUTO_START = true;
 
-    protected final JmsPoolConnection connection;
-
+    private final JmsPoolConnection connection;
     private final AtomicLong connectionRefCount;
     private final int sessionMode;
 
@@ -502,7 +504,7 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     //----- Internal implementation methods ----------------------------------//
 
-    protected JmsPoolSession getSession() {
+    JmsPoolSession getSession() {
         if (session == null) {
             synchronized (this) {
                 if (session == null) {
