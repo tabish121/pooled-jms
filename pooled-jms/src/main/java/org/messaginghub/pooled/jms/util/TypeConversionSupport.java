@@ -159,6 +159,16 @@ public final class TypeConversionSupport {
         });
     }
 
+    /**
+     * Attempts to convert the given value into the type provided.
+     *
+     * @param value
+     * 	The value to convert
+     * @param toClass
+     *  The type used to attempt the conversion
+     *
+     * @return the converted object
+     */
     public static Object convert(Object value, Class<?> toClass) {
 
         assert value != null && toClass != null;

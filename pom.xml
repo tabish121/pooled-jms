@@ -326,7 +326,8 @@
         <artifactId>maven-javadoc-plugin</artifactId>
         <version>${maven-javadoc-plugin-version}</version>
         <configuration>
-          <source>8</source>
+          <source>11</source>
+          <show>protected</show>
         </configuration>
         <executions>
           <execution>

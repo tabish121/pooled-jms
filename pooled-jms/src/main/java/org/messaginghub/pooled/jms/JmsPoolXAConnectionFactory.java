@@ -49,8 +49,19 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
     private static final long serialVersionUID = 7753681333583183646L;
 
+    /**
+     * Transaction manager that must be assigned for enlistment to take affect
+     */
     private TransactionManager transactionManager;
-    private boolean tmFromJndi = false;
+
+    /**
+     * Set if the transaction manager comes from JNDI configuration
+     */
+    private boolean tmFromJndi;
+
+    /**
+     * The JDNI name for the configuration from this connection factory
+     */
     private String tmJndiName = "java:/TransactionManager";
 
     /**

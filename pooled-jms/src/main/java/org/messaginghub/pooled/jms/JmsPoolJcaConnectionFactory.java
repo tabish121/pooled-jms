@@ -26,6 +26,9 @@ public class JmsPoolJcaConnectionFactory extends JmsPoolXAConnectionFactory {
 
     private static final long serialVersionUID = -2470093537159318333L;
 
+    /**
+     * Assigned name for JCA factory
+     */
     private String name;
 
     /**

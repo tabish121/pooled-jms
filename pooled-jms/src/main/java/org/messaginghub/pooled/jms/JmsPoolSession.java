@@ -549,10 +549,33 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
 
     //----- Internal support methods -----------------------------------------//
 
+    /**
+     * Determine the client version support in order to throw meaningful exceptions from
+     * APIs that may not be supported in the active client.
+     *
+     * @param major
+     * 	The desired major version number from the client
+     * @param minor
+     * 	The desired minor version number from the client
+     *
+     * @throws JMSException if the client does not support the desired version
+     */
     protected void checkClientJMSVersionSupport(int major, int minor) throws JMSException {
         safeGetSessionHolder().getConnection().checkClientJMSVersionSupport(major, minor);
     }
 
+    /**
+     * Returns if the client supports the desired JMS version number.
+     *
+     * @param major
+     * 	The desired major version number from the client
+     * @param minor
+     * 	The desired minor version number from the client
+     *
+     * @return <code>true</code> if the active client supported the desired version.
+     *
+     * @throws JMSException if an error occurs while trying to determine the client version support.
+     */
     protected boolean isJMSVersionSupported(int major, int minor) throws JMSException {
         return safeGetSessionHolder().getConnection().isJMSVersionSupported(major, minor);
     }
