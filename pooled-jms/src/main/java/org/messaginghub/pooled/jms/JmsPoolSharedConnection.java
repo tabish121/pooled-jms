@@ -64,6 +64,7 @@ class JmsPoolSharedConnection implements ExceptionListener {
     private final String connectionId;
     private final ReferenceCount referenceCount = new ReferenceCount();
     private final JmsPoolConnectionConfiguration configuration;
+    private final JmsPoolSharedConnectionEventHandlers eventHandler = new JmsPoolSharedConnectionEventHandlers();
 
     protected Connection connection;
 
@@ -73,7 +74,7 @@ class JmsPoolSharedConnection implements ExceptionListener {
     private int jmsMinorVersion = 1;
     private ExceptionListener connectionFactoryExceptionListener;
 
-    public JmsPoolSharedConnection(JmsPoolConnectionConfiguration configuration, Connection connection) {
+    JmsPoolSharedConnection(JmsPoolConnectionConfiguration configuration, Connection connection) {
         this.configuration = configuration;
         this.connection = connection;
         this.connectionId = connection.toString();
@@ -176,21 +177,7 @@ class JmsPoolSharedConnection implements ExceptionListener {
         JmsPoolSession session;
         try {
             session = new JmsPoolSession(key, sessionPool.borrowObject(key), sessionPool, key.isTransacted());
-            session.addSessionEventListener(new JmsPoolSessionEventListener() {
-
-                @Override
-                public void onTemporaryTopicCreate(TemporaryTopic tempTopic) {
-                }
-
-                @Override
-                public void onTemporaryQueueCreate(TemporaryQueue tempQueue) {
-                }
-
-                @Override
-                public void onSessionClosed(JmsPoolSession session) {
-                    loanedSessions.remove(session);
-                }
-            });
+            session.addSessionEventListener(eventHandler);
 
             loanedSessions.put(session, session);
         } catch (Exception e) {
@@ -400,6 +387,24 @@ class JmsPoolSharedConnection implements ExceptionListener {
             throw new JMSRuntimeException(message);
         } else {
             throw new JMSException(message);
+        }
+    }
+
+    private class JmsPoolSharedConnectionEventHandlers implements JmsPoolSessionEventListener {
+
+        @Override
+        public void onTemporaryQueueCreate(TemporaryQueue tempQueue) {
+            // Nothing to do for this event at this time.
+        }
+
+        @Override
+        public void onTemporaryTopicCreate(TemporaryTopic tempTopic) {
+            // Nothing to do for this event at this time.
+        }
+
+        @Override
+        public void onSessionClosed(JmsPoolSession session) {
+            loanedSessions.remove(session);
         }
     }
 }
