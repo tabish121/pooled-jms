@@ -51,7 +51,7 @@ class JmsPoolSharedXAConnection extends JmsPoolSharedConnection {
     @Override
     public Session createSession(boolean transacted, int ackMode) throws JMSException {
         try {
-            boolean isXa = (transactionManager != null && transactionManager.getStatus() != Status.STATUS_NO_TRANSACTION);
+            final boolean isXa = (transactionManager != null && transactionManager.getStatus() != Status.STATUS_NO_TRANSACTION);
 
             if (isXa) {
                 // if the xa tx aborts inflight we don't want to auto create a

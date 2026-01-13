@@ -87,7 +87,7 @@ public class JmsPoolQueueBrowser implements QueueBrowser, AutoCloseable {
     }
 
     /**
-     * Provides access to the wrapped {@link QueueBrowser} wihtout state checks.
+     * Provides access to the wrapped {@link QueueBrowser} without state checks.
      *
      * @return the underlying {@link QueueBrowser} that this wrapper object is a proxy to.
      */

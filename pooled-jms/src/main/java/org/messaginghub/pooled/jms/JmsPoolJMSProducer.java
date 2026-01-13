@@ -103,7 +103,7 @@ public class JmsPoolJMSProducer implements JMSProducer {
     @Override
     public JMSProducer send(Destination destination, byte[] body) {
         try {
-            BytesMessage message = session.createBytesMessage();
+            final BytesMessage message = session.createBytesMessage();
             message.writeBytes(body);
             doSend(destination, message);
         } catch (JMSException jmse) {
@@ -116,7 +116,7 @@ public class JmsPoolJMSProducer implements JMSProducer {
     @Override
     public JMSProducer send(Destination destination, Map<String, Object> body) {
         try {
-            MapMessage message = session.createMapMessage();
+            final MapMessage message = session.createMapMessage();
             for (Map.Entry<String, Object> entry : body.entrySet()) {
                 message.setObject(entry.getKey(), entry.getValue());
             }
@@ -132,7 +132,7 @@ public class JmsPoolJMSProducer implements JMSProducer {
     @Override
     public JMSProducer send(Destination destination, Serializable body) {
         try {
-            ObjectMessage message = session.createObjectMessage();
+            final ObjectMessage message = session.createObjectMessage();
             message.setObject(body);
             doSend(destination, message);
         } catch (JMSException jmse) {
@@ -145,7 +145,7 @@ public class JmsPoolJMSProducer implements JMSProducer {
     @Override
     public JMSProducer send(Destination destination, String body) {
         try {
-            TextMessage message = session.createTextMessage(body);
+            final TextMessage message = session.createTextMessage(body);
             doSend(destination, message);
         } catch (JMSException jmse) {
             throw JMSExceptionSupport.createRuntimeException(jmse);
@@ -155,7 +155,6 @@ public class JmsPoolJMSProducer implements JMSProducer {
     }
 
     private void doSend(Destination destination, Message message) throws JMSException {
-
         if (message == null) {
             throw new MessageFormatException("Message must not be null");
         }

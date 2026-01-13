@@ -270,7 +270,7 @@ final class JmsPoolSharedSession {
         protected void onCacheEviction(Map.Entry<Destination, E> eldest) {
             // Closes the cache's reference to the producer which will close it fully
             // if the producer is not reference currently by any other client code.
-            JmsPoolMessageProducer producer = (JmsPoolMessageProducer) eldest.getValue();
+            final JmsPoolMessageProducer producer = (JmsPoolMessageProducer) eldest.getValue();
             try {
                 producer.close();
             } catch (JMSException jmsEx) {}

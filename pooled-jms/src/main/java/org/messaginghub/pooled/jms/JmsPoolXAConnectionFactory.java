@@ -162,8 +162,8 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
             String name = (String) rootContextName;
             name = name.substring(0, name.lastIndexOf('/')) + "/conf" + name.substring(name.lastIndexOf('/'));
             try {
-                InitialContext ctx = new InitialContext();
-                NamingEnumeration<Binding> bindings = ctx.listBindings(name);
+                final InitialContext ctx = new InitialContext();
+                final NamingEnumeration<Binding> bindings = ctx.listBindings(name);
 
                 while (bindings.hasMore()) {
                     Binding bd = bindings.next();

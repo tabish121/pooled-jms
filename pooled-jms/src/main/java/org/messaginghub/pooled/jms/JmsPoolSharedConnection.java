@@ -168,13 +168,14 @@ class JmsPoolSharedConnection implements ExceptionListener {
         }
     }
 
-    public synchronized Connection getConnection() {
+    synchronized Connection getConnection() {
         return connection;
     }
 
     public Session createSession(boolean transacted, int ackMode) throws JMSException {
-        JmsPoolSessionKey key = new JmsPoolSessionKey(transacted, ackMode);
-        JmsPoolSession session;
+        final JmsPoolSessionKey key = new JmsPoolSessionKey(transacted, ackMode);
+        final JmsPoolSession session;
+
         try {
             session = new JmsPoolSession(key, sessionPool.borrowObject(key), sessionPool, key.isTransacted());
             session.addSessionEventListener(eventHandler);
@@ -185,6 +186,7 @@ class JmsPoolSharedConnection implements ExceptionListener {
             illegalStateException.initCause(e);
             throw illegalStateException;
         }
+
         return session;
     }
 
@@ -380,8 +382,8 @@ class JmsPoolSharedConnection implements ExceptionListener {
             return;
         }
 
-        String message = "JMS v" + requiredMajor + "." + requiredMinor + " client feature requested, " +
-                         "configured client supports JMS v" + jmsMajorVersion + "." + jmsMinorVersion;
+        final String message = "JMS v" + requiredMajor + "." + requiredMinor + " client feature requested, " +
+                               "configured client supports JMS v" + jmsMajorVersion + "." + jmsMinorVersion;
 
         if (runtimeEx) {
             throw new JMSRuntimeException(message);

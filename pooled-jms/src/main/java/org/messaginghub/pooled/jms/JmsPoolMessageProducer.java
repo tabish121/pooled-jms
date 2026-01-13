@@ -154,7 +154,7 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
     }
 
     private void sendMessage(Destination destination, Message message, int deliveryMode, int priority, long timeToLive, CompletionListener listener) throws JMSException {
-        MessageProducer messageProducer = getMessageProducer();
+        final MessageProducer messageProducer = getMessageProducer();
 
         // Only one thread can use the producer at a time to allow for dynamic configuration
         // changes to match what's been configured here.

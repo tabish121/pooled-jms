@@ -836,8 +836,9 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
             throw new IllegalStateException("No JMS client ConnectionFactory instance has been configured");
         }
 
+        final JmsPoolConnectionKey key = new JmsPoolConnectionKey(userName, password);
+
         JmsPoolSharedConnection connection = null;
-        JmsPoolConnectionKey key = new JmsPoolConnectionKey(userName, password);
 
         // This will either return an existing non-expired ConnectionPool or it
         // will create a new one to meet the demand in most cases but can be raced
