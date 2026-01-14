@@ -51,7 +51,7 @@
 
   <properties>
     <qpid-jms-version>2.9.0</qpid-jms-version>
-    <artemis-version>2.38.0</artemis-version>
+    <artemis-version>2.44.0</artemis-version>
     <commons-pool2-version>2.13.1</commons-pool2-version>
     <slf4j-version>2.0.17</slf4j-version>
     <mockito-version>5.21.0</mockito-version>
@@ -63,9 +63,9 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
-    <maven.compiler.source>11</maven.compiler.source>
-    <maven.compiler.target>11</maven.compiler.target>
-    <maven.compiler.release>11</maven.compiler.release>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+    <maven.compiler.release>17</maven.compiler.release>
 
     <apache-rat-version>0.17</apache-rat-version>
     <maven-assembly-plugin-version>3.8.0</maven-assembly-plugin-version>
