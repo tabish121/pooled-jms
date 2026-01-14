@@ -131,7 +131,7 @@ class JmsPoolSharedConnection implements ExceptionListener {
 
                 @Override
                 public boolean validateObject(JmsPoolSessionKey sessionKey, PooledObject<JmsPoolSharedSession> pooledObject) {
-                    JmsPoolSharedSession sessionHolder = pooledObject.getObject();
+                    final JmsPoolSharedSession sessionHolder = pooledObject.getObject();
 
                     try {
                         sessionHolder.getSession().getTransacted();

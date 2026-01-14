@@ -789,11 +789,11 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @throws JMSException if an error occurs while creating the new JMS Connection.
      */
     protected Connection createProviderConnection(JmsPoolConnectionKey key) throws JMSException {
-        if (connectionFactory instanceof ConnectionFactory) {
+        if (connectionFactory instanceof ConnectionFactory factory) {
             if (key.hasCredentials()) {
-                return ((ConnectionFactory) connectionFactory).createConnection(key.getUserName(), key.getPassword());
+                return factory.createConnection(key.getUserName(), key.getPassword());
             } else {
-                return ((ConnectionFactory) connectionFactory).createConnection();
+                return factory.createConnection();
             }
         } else {
             throw new IllegalStateException("connectionFactory should implement jakarta.jms.ConnectionFactory");
@@ -815,11 +815,11 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @throws JMSRuntimeException if an error occurs while creating the new JMS Context.
      */
     protected JMSContext createProviderContext(String username, String password, int sessionMode) {
-        if (connectionFactory instanceof ConnectionFactory) {
+        if (connectionFactory instanceof ConnectionFactory factory) {
             if (username == null && password == null) {
-                return ((ConnectionFactory) connectionFactory).createContext(sessionMode);
+                return factory.createContext(sessionMode);
             } else {
-                return ((ConnectionFactory) connectionFactory).createContext(username, password, sessionMode);
+                return factory.createContext(username, password, sessionMode);
             }
         } else {
             throw new IllegalStateRuntimeException("connectionFactory should implement jakarta.jms.ConnectionFactory");

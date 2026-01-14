@@ -291,8 +291,8 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
             throw JMSExceptionSupport.createRuntimeException(e);
         }
 
-        if (session.getSession() instanceof XASession) {
-            return ((XASession) session.getSession()).getXAResource();
+        if (session.getSession() instanceof XASession xaSession) {
+            return xaSession.getXAResource();
         }
 
         return null;
@@ -390,42 +390,42 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
 
     @Override
     public MessageConsumer createSharedConsumer(Topic topic, String sharedSubscriptionName) throws JMSException {
-        JmsPoolSharedSession state = safeGetSessionHolder();
+        final JmsPoolSharedSession state = safeGetSessionHolder();
         state.getConnection().checkClientJMSVersionSupport(2, 0);
         return addConsumer(state.getSession().createSharedConsumer(topic, sharedSubscriptionName));
     }
 
     @Override
     public MessageConsumer createSharedConsumer(Topic topic, String sharedSubscriptionName, String messageSelector) throws JMSException {
-        JmsPoolSharedSession state = safeGetSessionHolder();
+        final JmsPoolSharedSession state = safeGetSessionHolder();
         state.getConnection().checkClientJMSVersionSupport(2, 0);
         return addConsumer(state.getSession().createSharedConsumer(topic, sharedSubscriptionName, messageSelector));
     }
 
     @Override
     public MessageConsumer createDurableConsumer(Topic topic, String name) throws JMSException {
-        JmsPoolSharedSession state = safeGetSessionHolder();
+        final JmsPoolSharedSession state = safeGetSessionHolder();
         state.getConnection().checkClientJMSVersionSupport(2, 0);
         return addConsumer(state.getSession().createDurableConsumer(topic, name));
     }
 
     @Override
     public MessageConsumer createDurableConsumer(Topic topic, String name, String messageSelector, boolean noLocal) throws JMSException {
-        JmsPoolSharedSession state = safeGetSessionHolder();
+        final JmsPoolSharedSession state = safeGetSessionHolder();
         state.getConnection().checkClientJMSVersionSupport(2, 0);
         return addConsumer(state.getSession().createDurableConsumer(topic, name, messageSelector, noLocal));
     }
 
     @Override
     public MessageConsumer createSharedDurableConsumer(Topic topic, String name) throws JMSException {
-        JmsPoolSharedSession state = safeGetSessionHolder();
+        final JmsPoolSharedSession state = safeGetSessionHolder();
         state.getConnection().checkClientJMSVersionSupport(2, 0);
         return addConsumer(state.getSession().createSharedDurableConsumer(topic, name));
     }
 
     @Override
     public MessageConsumer createSharedDurableConsumer(Topic topic, String name, String messageSelector) throws JMSException {
-        JmsPoolSharedSession state = safeGetSessionHolder();
+        final JmsPoolSharedSession state = safeGetSessionHolder();
         state.getConnection().checkClientJMSVersionSupport(2, 0);
         return addConsumer(state.getSession().createSharedDurableConsumer(topic, name, messageSelector));
     }

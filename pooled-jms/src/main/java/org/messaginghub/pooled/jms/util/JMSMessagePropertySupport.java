@@ -54,7 +54,8 @@ public class JMSMessagePropertySupport {
             }
         }
 
-        T rc = (T) TypeConversionSupport.convert(value, target);
+        final T rc = (T) TypeConversionSupport.convert(value, target);
+
         if (rc == null) {
             throw new MessageFormatException("Property " + name + " was a " + value.getClass().getName() + " and cannot be read as a " + target.getName());
         }
@@ -124,13 +125,15 @@ public class JMSMessagePropertySupport {
         // which must be a letter.  A letter is any character for which the method
         // Character.isJavaLetter returns true.  This includes '_' and '$'.  A letter or digit
         // is any character for which the method Character.isJavaLetterOrDigit returns true.
-        char startChar = identifier.charAt(0);
+        final char startChar = identifier.charAt(0);
+
         if (!(Character.isJavaIdentifierStart(startChar))) {
             throw new IllegalArgumentException("Identifier does not begin with a valid JMS identifier start character: '" + identifier + "' ");
         }
 
         // JMS part character
-        int length = identifier.length();
+        final int length = identifier.length();
+
         for (int i = 1; i < length; i++) {
             char ch = identifier.charAt(i);
             if (!(Character.isJavaIdentifierPart(ch))) {
@@ -149,16 +152,16 @@ public class JMSMessagePropertySupport {
      * @throws MessageFormatException if any violations are found
      */
     public static void checkValidObject(Object value) throws MessageFormatException {
-        boolean valid = value instanceof Boolean ||
-                        value instanceof Byte ||
-                        value instanceof Short ||
-                        value instanceof Integer ||
-                        value instanceof Long ||
-                        value instanceof Float ||
-                        value instanceof Double ||
-                        value instanceof Character ||
-                        value instanceof String ||
-                        value == null;
+        final boolean valid = value instanceof Boolean ||
+                              value instanceof Byte ||
+                              value instanceof Short ||
+                              value instanceof Integer ||
+                              value instanceof Long ||
+                              value instanceof Float ||
+                              value instanceof Double ||
+                              value instanceof Character ||
+                              value instanceof String ||
+                              value == null;
 
         if (!valid) {
             throw new MessageFormatException("Only objectified primitive objects and String types are allowed but was: " + value + " type: " + value.getClass());

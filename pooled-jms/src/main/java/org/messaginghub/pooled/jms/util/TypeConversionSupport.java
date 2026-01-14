@@ -45,7 +45,8 @@ public final class TypeConversionSupport {
                 return false;
             }
 
-            ConversionKey x = (ConversionKey) o;
+            final ConversionKey x = (ConversionKey) o;
+
             return x.from == from && x.to == to;
         }
 
@@ -187,7 +188,8 @@ public final class TypeConversionSupport {
             toClass = convertPrimitiveTypeToWrapperType(toClass);
         }
 
-        Converter c = CONVERSION_MAP.get(new ConversionKey(fromClass, toClass));
+        final Converter c = CONVERSION_MAP.get(new ConversionKey(fromClass, toClass));
+
         if (c == null) {
             return null;
         }
@@ -197,6 +199,7 @@ public final class TypeConversionSupport {
 
     private static Class<?> convertPrimitiveTypeToWrapperType(Class<?> type) {
         Class<?> rc = type;
+
         if (type.isPrimitive()) {
             if (type == int.class) {
                 rc = Integer.class;

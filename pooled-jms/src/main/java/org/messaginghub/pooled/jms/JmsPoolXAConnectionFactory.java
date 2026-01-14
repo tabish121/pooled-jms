@@ -112,11 +112,11 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
 
     @Override
     protected XAConnection createProviderConnection(JmsPoolConnectionKey key) throws JMSException {
-        if (connectionFactory instanceof XAConnectionFactory) {
+        if (connectionFactory instanceof XAConnectionFactory factory) {
             if (key.hasCredentials()) {
-                return ((XAConnectionFactory) connectionFactory).createXAConnection(key.getUserName(), key.getPassword());
+                return factory.createXAConnection(key.getUserName(), key.getPassword());
             } else {
-                return ((XAConnectionFactory) connectionFactory).createXAConnection();
+                return factory.createXAConnection();
             }
         } else {
             throw new IllegalStateException("connectionFactory should implement jakarta.jms.XAConnectionFactory");
@@ -125,11 +125,11 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
 
     @Override
     protected XAJMSContext createProviderContext(String username, String password, int sessionMode) {
-        if (connectionFactory instanceof XAConnectionFactory) {
+        if (connectionFactory instanceof XAConnectionFactory factory) {
             if (username == null && password == null) {
-                return ((XAConnectionFactory) connectionFactory).createXAContext();
+                return factory.createXAContext();
             } else {
-                return ((XAConnectionFactory) connectionFactory).createXAContext(username, password);
+                return factory.createXAContext(username, password);
             }
         } else {
             throw new jakarta.jms.IllegalStateRuntimeException("connectionFactory should implement jakarta.jms.XAConnectionFactory");
