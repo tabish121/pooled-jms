@@ -149,6 +149,8 @@ public class MockJMSMessageProducer implements MessageProducer, AutoCloseable {
     @Override
     public long getDeliveryDelay() throws JMSException {
         checkClosed();
+        session.signalMessageProducerGetDeliveryDelay(this);
+
         return deliveryDelay;
     }
 

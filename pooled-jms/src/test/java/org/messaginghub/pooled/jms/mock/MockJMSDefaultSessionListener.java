@@ -35,4 +35,7 @@ public class MockJMSDefaultSessionListener implements MockJMSSessionListener {
     @Override
     public void onProducerClose(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {}
 
+    @Override
+    public void onProducerGetDeliveryDelay(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {}
+
 }

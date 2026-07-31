@@ -19,6 +19,12 @@ package org.messaginghub.pooled.jms.pool;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.messaginghub.pooled.jms.JmsPoolMessageProducer;
+import org.messaginghub.pooled.jms.JmsPoolQueueSender;
+import org.messaginghub.pooled.jms.JmsPoolSession;
+import org.messaginghub.pooled.jms.JmsPoolTopicPublisher;
+import org.messaginghub.pooled.jms.util.LRUCache;
+
 import jakarta.jms.Destination;
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
@@ -30,12 +36,6 @@ import jakarta.jms.Session;
 import jakarta.jms.Topic;
 import jakarta.jms.TopicPublisher;
 import jakarta.jms.TopicSession;
-
-import org.messaginghub.pooled.jms.JmsPoolMessageProducer;
-import org.messaginghub.pooled.jms.JmsPoolQueueSender;
-import org.messaginghub.pooled.jms.JmsPoolSession;
-import org.messaginghub.pooled.jms.JmsPoolTopicPublisher;
-import org.messaginghub.pooled.jms.util.LRUCache;
 
 /**
  * Used to store a pooled session instance and any resources that can
@@ -157,102 +157,138 @@ public final class PooledSessionHolder {
         MessageProducer delegate = null;
         AtomicInteger refCount = null;
 
-        synchronized (this) {
-            if (isUseAnonymousProducer() || destination == null) {
-                delegate = anonymousProducer;
-                if (delegate == null) {
-                    delegate = anonymousProducer = session.createProducer(null);
-                    refCount = new AtomicInteger(0);
-                }
-            } else if (explicitProducerCacheSize > 0) {
-                JmsPoolMessageProducer cached = cachedProducers.get(destination);
-                if (cached == null) {
+        try {
+            synchronized (this) {
+                if (isUseAnonymousProducer() || destination == null) {
+                    delegate = anonymousProducer;
+                    if (delegate == null) {
+                        delegate = anonymousProducer = session.createProducer(null);
+                        refCount = new AtomicInteger(0);
+                    }
+                } else if (explicitProducerCacheSize > 0) {
+                    JmsPoolMessageProducer cached = cachedProducers.get(destination);
+                    if (cached == null) {
+                        delegate = session.createProducer(destination);
+                        refCount = new AtomicInteger(1);
+                        cached = new JmsPoolMessageProducer(jmsPoolSession, delegate, destination, refCount);
+
+                        cachedProducers.put(destination, cached);
+                    } else {
+                        delegate = cached.getDelegate();
+                        refCount = cached.getRefCount();
+                    }
+
+                    refCount.incrementAndGet();
+                } else {
                     delegate = session.createProducer(destination);
                     refCount = new AtomicInteger(1);
-                    cached = new JmsPoolMessageProducer(jmsPoolSession, delegate, destination, refCount);
-
-                    cachedProducers.put(destination, cached);
-                } else {
-                    delegate = cached.getDelegate();
-                    refCount = cached.getRefCount();
                 }
-
-                refCount.incrementAndGet();
-            } else {
-                delegate = session.createProducer(destination);
-                refCount = new AtomicInteger(1);
             }
-        }
 
-        return new JmsPoolMessageProducer(jmsPoolSession, delegate, destination, refCount);
+            return new JmsPoolMessageProducer(jmsPoolSession, delegate, destination, refCount);
+        } catch (Exception ex) {
+            if (delegate != null) {
+                try {
+                    delegate.close();
+                } catch (Exception ignore) {
+                    // Swallow to throw original error
+                }
+            }
+
+            throw ex;
+        }
     }
 
     public JmsPoolTopicPublisher getOrCreatePublisher(JmsPoolSession jmsPoolSession, Topic topic) throws JMSException {
         TopicPublisher delegate = null;
         AtomicInteger refCount = null;
 
-        synchronized (this) {
-            if (isUseAnonymousProducer() || topic == null) {
-                delegate = anonymousPublisher;
-                if (delegate == null) {
-                    delegate = anonymousPublisher = ((TopicSession) session).createPublisher(null);
-                    refCount = new AtomicInteger(0);
-                }
-            } else if (explicitProducerCacheSize > 0) {
-                JmsPoolTopicPublisher cached = cachedPublishers.get(topic);
-                if (cached == null) {
+        try {
+            synchronized (this) {
+                if (isUseAnonymousProducer() || topic == null) {
+                    delegate = anonymousPublisher;
+                    if (delegate == null) {
+                        delegate = anonymousPublisher = ((TopicSession) session).createPublisher(null);
+                        refCount = new AtomicInteger(0);
+                    }
+                } else if (explicitProducerCacheSize > 0) {
+                    JmsPoolTopicPublisher cached = cachedPublishers.get(topic);
+                    if (cached == null) {
+                        delegate = ((TopicSession) session).createPublisher(topic);
+                        refCount = new AtomicInteger(1);
+                        cached = new JmsPoolTopicPublisher(jmsPoolSession, delegate, topic, refCount);
+
+                        cachedPublishers.put(topic, cached);
+                    } else {
+                        delegate = (TopicPublisher) cached.getDelegate();
+                        refCount = cached.getRefCount();
+                    }
+
+                    refCount.incrementAndGet();
+                } else {
                     delegate = ((TopicSession) session).createPublisher(topic);
                     refCount = new AtomicInteger(1);
-                    cached = new JmsPoolTopicPublisher(jmsPoolSession, delegate, topic, refCount);
-
-                    cachedPublishers.put(topic, cached);
-                } else {
-                    delegate = (TopicPublisher) cached.getDelegate();
-                    refCount = cached.getRefCount();
                 }
-
-                refCount.incrementAndGet();
-            } else {
-                delegate = ((TopicSession) session).createPublisher(topic);
-                refCount = new AtomicInteger(1);
             }
-        }
 
-        return new JmsPoolTopicPublisher(jmsPoolSession, delegate, topic, refCount);
+            return new JmsPoolTopicPublisher(jmsPoolSession, delegate, topic, refCount);
+        } catch (Exception ex) {
+            if (delegate != null) {
+                try {
+                    delegate.close();
+                } catch (Exception ignore) {
+                    // Swallow to throw original error
+                }
+            }
+
+            throw ex;
+        }
     }
 
     public JmsPoolQueueSender getOrCreateSender(JmsPoolSession jmsPoolSession, Queue queue) throws JMSException {
         QueueSender delegate = null;
         AtomicInteger refCount = null;
 
-        synchronized (this) {
-            if (isUseAnonymousProducer() || queue == null) {
-                delegate = anonymousSender;
-                if (delegate == null) {
-                    delegate = anonymousSender = ((QueueSession) session).createSender(null);
-                    refCount = new AtomicInteger(0);
-                }
-            } else if (explicitProducerCacheSize > 0) {
-                JmsPoolQueueSender cached = cachedSenders.get(queue);
-                if (cached == null) {
+        try {
+            synchronized (this) {
+                if (isUseAnonymousProducer() || queue == null) {
+                    delegate = anonymousSender;
+                    if (delegate == null) {
+                        delegate = anonymousSender = ((QueueSession) session).createSender(null);
+                        refCount = new AtomicInteger(0);
+                    }
+                } else if (explicitProducerCacheSize > 0) {
+                    JmsPoolQueueSender cached = cachedSenders.get(queue);
+                    if (cached == null) {
+                        delegate = ((QueueSession) session).createSender(queue);
+                        refCount = new AtomicInteger(1);
+                        cached = new JmsPoolQueueSender(jmsPoolSession, delegate, queue, refCount);
+
+                        cachedSenders.put(queue, cached);
+                    } else {
+                        delegate = (QueueSender) cached.getDelegate();
+                        refCount = cached.getRefCount();
+                    }
+
+                    refCount.incrementAndGet();
+                } else {
                     delegate = ((QueueSession) session).createSender(queue);
                     refCount = new AtomicInteger(1);
-                    cached = new JmsPoolQueueSender(jmsPoolSession, delegate, queue, refCount);
-
-                    cachedSenders.put(queue, cached);
-                } else {
-                    delegate = (QueueSender) cached.getDelegate();
-                    refCount = cached.getRefCount();
                 }
-
-                refCount.incrementAndGet();
-            } else {
-                delegate = ((QueueSession) session).createSender(queue);
-                refCount = new AtomicInteger(1);
             }
-        }
 
-        return new JmsPoolQueueSender(jmsPoolSession, delegate, queue, refCount);
+            return new JmsPoolQueueSender(jmsPoolSession, delegate, queue, refCount);
+        } catch (Exception ex) {
+            if (delegate != null) {
+                try {
+                    delegate.close();
+                } catch (Exception ignore) {
+                    // Swallow to throw original error
+                }
+            }
+
+            throw ex;
+        }
     }
 
     public PooledConnection getConnection() {

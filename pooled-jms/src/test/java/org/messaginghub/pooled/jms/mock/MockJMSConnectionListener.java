@@ -46,4 +46,6 @@ public interface MockJMSConnectionListener {
 
     void onCloseMessageProducer(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException;
 
+    void onMessageProducerGetDeliveryDelay(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException;
+
 }

@@ -567,6 +567,12 @@ public class MockJMSConnection implements Connection, TopicConnection, QueueConn
         }
     }
 
+    private void signalMessageProducerGetDeliveryDelay(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
+        for (MockJMSConnectionListener listener : connectionListeners) {
+            listener.onMessageProducerGetDeliveryDelay(session, producer);
+        }
+    }
+
     //----- Event points for MockJMS resources -------------------------------//
 
     void onMessageSend(MockJMSSession session, MockJMSMessageProducer producer, Message message) throws JMSException {
@@ -592,5 +598,10 @@ public class MockJMSConnection implements Connection, TopicConnection, QueueConn
     void onMessageProducerClose(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
         checkClosedOrFailed();
         signalCloseMessageProducer(session, producer);
+    }
+
+    void onMessageProducerGetDeliveryDelay(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
+        checkClosedOrFailed();
+        signalMessageProducerGetDeliveryDelay(session, producer);
     }
 }

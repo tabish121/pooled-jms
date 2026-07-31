@@ -49,10 +49,12 @@ import jakarta.jms.JMSRuntimeException;
 import jakarta.jms.Message;
 import jakarta.jms.MessageListener;
 import jakarta.jms.Queue;
+import jakarta.jms.QueueSession;
 import jakarta.jms.Session;
 import jakarta.jms.TemporaryQueue;
 import jakarta.jms.TemporaryTopic;
 import jakarta.jms.Topic;
+import jakarta.jms.TopicSession;
 
 @Timeout(60)
 public class JmsPoolSessionTest extends JmsPoolTestSupport {
@@ -839,5 +841,122 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         assertNotSame(mockSession1, mockSession3);
         assertNotSame(mockSession2, mockSession3);
+    }
+
+    @Test
+    public void testProducerGetDeliveryThrowWhenWrapperBuildingCleansUpCreatedResource() throws Exception {
+        cf.setUseAnonymousProducers(false);
+
+        final AtomicBoolean producer1Closed = new AtomicBoolean(false);
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
+
+            @Override
+            public void onCloseMessageProducer(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
+                producer1Closed.set(true);
+            }
+
+            @Override
+            public void onMessageProducerGetDeliveryDelay(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
+                throw new JMSException("Forced error on call to get delivery delay");
+            }
+        });
+
+        final Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        final Queue queue = session.createTemporaryQueue();
+
+        try {
+            session.createProducer(queue);
+            fail("Should have thrown from producer create");
+        } catch (JMSException ex) {
+            // Expected
+        }
+
+        assertTrue(producer1Closed.get()); // Created producer should be cleaned up
+
+        session.close();
+
+        connection.close();
+    }
+
+    @Test
+    public void testPublisherGetDeliveryThrowWhenWrapperBuildingCleansUpCreatedResource() throws Exception {
+        cf.setUseAnonymousProducers(false);
+
+        final AtomicBoolean producer1Closed = new AtomicBoolean(false);
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
+
+            @Override
+            public void onCloseMessageProducer(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
+                producer1Closed.set(true);
+            }
+
+            @Override
+            public void onMessageProducerGetDeliveryDelay(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
+                throw new JMSException("Forced error on call to get delivery delay");
+            }
+        });
+
+        final TopicSession session = connection.createTopicSession(false, Session.AUTO_ACKNOWLEDGE);
+        final Topic topic = session.createTemporaryTopic();
+
+        try {
+            session.createPublisher(topic);
+            fail("Should have thrown from producer create");
+        } catch (JMSException ex) {
+            // Expected
+        }
+
+        assertTrue(producer1Closed.get()); // Created producer should be cleaned up
+
+        session.close();
+
+        connection.close();
+    }
+
+    @Test
+    public void testSenderGetDeliveryThrowWhenWrapperBuildingCleansUpCreatedResource() throws Exception {
+        cf.setUseAnonymousProducers(false);
+
+        final AtomicBoolean producer1Closed = new AtomicBoolean(false);
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
+
+            @Override
+            public void onCloseMessageProducer(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
+                producer1Closed.set(true);
+            }
+
+            @Override
+            public void onMessageProducerGetDeliveryDelay(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
+                throw new JMSException("Forced error on call to get delivery delay");
+            }
+        });
+
+        final QueueSession session = connection.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
+        final Queue queue = session.createTemporaryQueue();
+
+        try {
+            session.createSender(queue);
+            fail("Should have thrown from producer create");
+        } catch (JMSException ex) {
+            // Expected
+        }
+
+        assertTrue(producer1Closed.get()); // Created producer should be cleaned up
+
+        session.close();
+
+        connection.close();
     }
 }

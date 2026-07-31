@@ -549,4 +549,12 @@ public class MockJMSSession implements Session, QueueSession, TopicSession, Auto
             listener.onProducerClose(this, producer);
         }
     }
+
+    protected void signalMessageProducerGetDeliveryDelay(MockJMSMessageProducer producer) throws JMSException {
+        connection.onMessageProducerGetDeliveryDelay(this, producer);
+
+        for (MockJMSSessionListener listener : sessionListeners) {
+            listener.onProducerGetDeliveryDelay(this, producer);
+        }
+    }
 }
