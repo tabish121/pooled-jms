@@ -24,6 +24,13 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.messaginghub.pooled.jms.mock.MockJMSConnection;
+import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
+import org.messaginghub.pooled.jms.mock.MockJMSMessageProducer;
+import org.messaginghub.pooled.jms.mock.MockJMSSession;
+
 import jakarta.jms.DeliveryMode;
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
@@ -33,14 +40,6 @@ import jakarta.jms.QueueSender;
 import jakarta.jms.QueueSession;
 import jakarta.jms.Session;
 import jakarta.jms.TextMessage;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import org.messaginghub.pooled.jms.mock.MockJMSConnection;
-import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
-import org.messaginghub.pooled.jms.mock.MockJMSMessageProducer;
-import org.messaginghub.pooled.jms.mock.MockJMSQueueSender;
-import org.messaginghub.pooled.jms.mock.MockJMSSession;
 
 /**
  * Test for the JMS Pools QueueSender wrapper.
@@ -77,19 +76,19 @@ public class JmsPoolQueueSenderTest extends JmsPoolTestSupport {
     }
 
     @Test
-    public void testGetTopicSubscriber() throws JMSException {
+    public void testGetQueueSender() throws JMSException {
         JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
         QueueSession session = connection.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
         Queue queue = session.createTemporaryQueue();
         JmsPoolQueueSender sender = (JmsPoolQueueSender) session.createSender(queue);
 
-        assertNotNull(sender.getQueueSender());
-        assertTrue(sender.getQueueSender() instanceof MockJMSQueueSender);
+        assertNotNull(sender.getProviderMessageProducer());
+        assertTrue(sender.getProviderMessageProducer() instanceof MockJMSMessageProducer);
 
         sender.close();
 
         try {
-            sender.getQueueSender();
+            sender.getProviderMessageProducer();
             fail("Cannot read state on closed sender");
         } catch (IllegalStateException ise) {}
     }
@@ -102,7 +101,7 @@ public class JmsPoolQueueSenderTest extends JmsPoolTestSupport {
         QueueSender sender = session.createSender(null);
 
         final AtomicBoolean sent = new AtomicBoolean();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -125,7 +124,7 @@ public class JmsPoolQueueSenderTest extends JmsPoolTestSupport {
         QueueSender sender = session.createSender(null);
 
         final AtomicBoolean sent = new AtomicBoolean();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override

@@ -14,72 +14,46 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.messaginghub.pooled.jms;
+package org.messaginghub.pooled.jms.internal;
 
 import java.beans.ExceptionListener;
 import java.lang.invoke.MethodHandles;
-import java.util.Properties;
+import java.time.Duration;
+import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolConnectionProxy;
-import org.messaginghub.pooled.jms.internal.JmsPoolConnectionProxyFactory;
+import org.apache.commons.pool2.KeyedPooledObjectFactory;
+import org.apache.commons.pool2.PooledObject;
+import org.apache.commons.pool2.impl.DefaultPooledObject;
+import org.apache.commons.pool2.impl.EvictionConfig;
+import org.apache.commons.pool2.impl.EvictionPolicy;
+import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
+import org.apache.commons.pool2.impl.GenericKeyedObjectPoolConfig;
 import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import jakarta.jms.Connection;
 import jakarta.jms.ConnectionFactory;
-import jakarta.jms.IllegalStateRuntimeException;
-import jakarta.jms.JMSContext;
+import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
-import jakarta.jms.JMSRuntimeException;
-import jakarta.jms.QueueConnection;
-import jakarta.jms.QueueConnectionFactory;
 import jakarta.jms.Session;
-import jakarta.jms.TopicConnection;
-import jakarta.jms.TopicConnectionFactory;
+import jakarta.jms.XAConnection;
+import jakarta.jms.XAConnectionFactory;
 
-/**
- * A JMS provider which pools Connection, Session and MessageProducer instances
- * so it can be used with tools like <a href="http://camel.apache.org/">Camel</a> or any other project
- * that is configured using JMS ConnectionFactory resources, connections, sessions and producers are
- * returned to a pool after use so that they can be reused later without having to undergo the cost
- * of creating them again.
- *
- * This pooling connection factory groups connections into groups based on the user name and password
- * used to create the connections along with a group for connections created without a user-name or a
- * password. The configuration for max connections applies to each group of connections individually
- * meaning to total number of connections can be greater than the configured if connections are created
- * for multiple users.
- *
- * <b>NOTE:</b> while this implementation does allow the creation of a collection of active consumers,
- * it does not 'pool' consumers. Pooling makes sense for connections, sessions and producers, which
- * are expensive to create and can remain idle a minimal cost. Consumers, on the other hand, are usually
- * just created at startup and left active, handling incoming messages as they come. When a consumer is
- * complete, it is best to close it rather than return it to a pool for later reuse: this is because,
- * even if a consumer is idle, the broker may keep delivering messages to the consumer's prefetch buffer,
- * where they'll get held until the consumer is active again.
- *
- * If you are creating a collection of consumers (for example, for multi-threaded message consumption), you
- * might want to consider using a lower prefetch value for each consumer (e.g. 10 or 20), to ensure that
- * all messages don't end up going to just one of the consumers. See this FAQ entry for more detail:
- * http://activemq.apache.org/i-do-not-receive-messages-in-my-second-consumer.html
- *
- * Optionally, one may configure the pool to examine and possibly evict objects as they sit idle in the
- * pool. This is performed by a "connection check" thread, which runs asynchronously. Caution should
- * be used when configuring this optional feature. Connection check runs contend with client threads for
- * access to resources in the pool, so if they run too frequently performance issues may result. The
- * connection check thread may be configured using the {@link JmsPoolConnectionFactory#setConnectionCheckInterval(long)}
- * method. By default the value is -1 which means no connection check thread will be run. Set to a
- * non-negative value to configure the connection check thread to run, the implementation may enforce
- * a minimum time between eviction checks.
- */
-public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnectionFactory, TopicConnectionFactory {
+public abstract class JmsPoolAbstractConnectionProxyFactory<CF, CP extends JmsPoolConnectionProxy> {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private static final AtomicIntegerFieldUpdater<JmsPoolConnectionFactory> STOPPED_UPDATER =
-        AtomicIntegerFieldUpdater.newUpdater(JmsPoolConnectionFactory.class, "stopped");
+    @SuppressWarnings("rawtypes")
+    private static final AtomicIntegerFieldUpdater<JmsPoolAbstractConnectionProxyFactory> STOPPED_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(JmsPoolAbstractConnectionProxyFactory.class, "stopped");
+
+    private static final int EXHUASTION_RECOVER_RETRY_LIMIT = 20;
+    private static final long EXHAUSTION_RECOVER_INITIAL_BACKOFF = 1_000L;
+    private static final long EXHAUSTION_RECOVER_BACKOFF_LIMIT = 10_000L;
 
     /**
      * The default value controlling time between checks for idle connections in the pool.
@@ -87,41 +61,38 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     public static final long DEFAULT_TIME_BETWEEN_EVICTION_RUNS = -1;
 
     /**
-     * The default maximum number of connections to maintain in the connection pool.
+     * The default maximum number of connections to maintain in the connection pool, this value
+     * will be over-written by a call to set the max connections after the factory is created.
      */
     public static final int DEFAULT_MAX_CONNECTIONS = 1;
 
-    /**
-     * The default value controlling if the connection pool uses its own JMS context instances or
-     * provides one directly from the configuration {@link ConnectionFactory} instance.
-     */
-    public static final boolean DEFAULT_USE_PROVIDER_JMS_CONTEXT = false;
-
-    private boolean useProviderJMSContext = DEFAULT_USE_PROVIDER_JMS_CONTEXT;
+    private int maxConnections = DEFAULT_MAX_CONNECTIONS;
+    private long connectionCheckInterval = DEFAULT_TIME_BETWEEN_EVICTION_RUNS;
+    private GenericKeyedObjectPool<JmsPoolConnectionKey, CP> connectionsPool;
     private volatile int stopped;
 
-    /**
-     * Factory that creates the pooled JMS connections wrapped in a proxy that tracks references.
-     */
-    protected final JmsPoolConnectionProxyFactory connectionProxyFactory = new JmsPoolConnectionProxyFactory();
+    // Temporary value used to always fetch the result of makeObject, this is done mainly because
+    // the commons pool add API does not return the element that was just added so the pool cannot
+    // ensure that if it called borrow it would get the newest connection.
+    private final AtomicReference<CP> mostRecentlyCreated = new AtomicReference<CP>(null);
+    private final JmsPoolConnectionConfiguration connectionConfig = new JmsPoolConnectionConfiguration();
 
     /**
      * Creates the pooling connection factory in the started state but the application must configure
      * a backing {@link ConnectionFactory} before using any method in this object.
      */
-    public JmsPoolConnectionFactory() {}
+    public JmsPoolAbstractConnectionProxyFactory() {}
 
     /**
-     * Gets the configured {@link ConnectionFactory} that is used when new {@link Connection} instance are added to the pool.
+     * Gets the configured {@link ConnectionFactory} or {@link XAConnectionFactory} that is used when new
+     * {@link Connection} or {@link XAConnection} instance are added to the pool.
      *
      * @return the currently configured ConnectionFactory used to create the pooled Connections.
      */
-    public Object getConnectionFactory() {
-        return connectionProxyFactory.getConnectionFactory();
-    }
+    public abstract CF getConnectionFactory();
 
     /**
-     * Sets the ConnectionFactory used to create new pooled Connections.
+     * Sets the {@link ConnectionFactory} or {@link XAConnectionFactory} used to create new pooled Connections.
      * <p>
      * Updates to this value do not affect Connections that were previously created and placed
      * into the pool. In order to allocate new Connections based off this new ConnectionFactory
@@ -130,79 +101,12 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @param factory
      *      The factory to use to create pooled Connections (cannot be null).
      */
-    public void setConnectionFactory(final Object factory) {
-        if (factory instanceof ConnectionFactory cf) {
-            connectionProxyFactory.setConnectionFactory(cf);
-        } else {
-            throw new IllegalArgumentException("connectionFactory should implement jakarta.jms.ConnectionFactory");
-        }
-    }
+    public abstract void setConnectionFactory(final CF factory);
 
     //----- JMS Connection Creation ---------------------------------------------//
 
-    @Override
-    public QueueConnection createQueueConnection() throws JMSException {
-        return (QueueConnection) createConnection();
-    }
-
-    @Override
-    public QueueConnection createQueueConnection(String userName, String password) throws JMSException {
-        return (QueueConnection) createConnection(userName, password);
-    }
-
-    @Override
-    public TopicConnection createTopicConnection() throws JMSException {
-        return (TopicConnection) createConnection();
-    }
-
-    @Override
-    public TopicConnection createTopicConnection(String userName, String password) throws JMSException {
-        return (TopicConnection) createConnection(userName, password);
-    }
-
-    @Override
-    public Connection createConnection() throws JMSException {
-        return createConnection(null, null);
-    }
-
-    @Override
-    public Connection createConnection(String userName, String password) throws JMSException {
-        return newJmsPoolConnection(userName, password);
-    }
-
-    //----- JMS Context Creation ---------------------------------------------//
-
-    @Override
-    public JMSContext createContext() {
-        return createContext(null, null, JMSContext.AUTO_ACKNOWLEDGE);
-    }
-
-    @Override
-    public JMSContext createContext(int sessionMode) {
-        return createContext(null, null, sessionMode);
-    }
-
-    @Override
-    public JMSContext createContext(String username, String password) {
-        return createContext(username, password, JMSContext.AUTO_ACKNOWLEDGE);
-    }
-
-    @Override
-    public JMSContext createContext(String username, String password, int sessionMode) {
-        if (isStopped()) {
-            LOG.debug("The pooled connection factory is stopped, skipping create new connection.");
-            throw new IllegalStateRuntimeException("Cannot create a JMS context from a stopped pooled connection factory");
-        }
-
-        if (isUseProviderJMSContext()) {
-            return createProviderContext(username, password, sessionMode);
-        } else {
-            try {
-                return newPooledConnectionContext(newJmsPoolConnection(username, password), sessionMode);
-            } catch (JMSException e) {
-                throw JMSExceptionSupport.createRuntimeException(e);
-            }
-        }
+    public CP createConnection(String userName, String password) throws JMSException {
+        return createJmsPoolConnection(userName, password);
     }
 
     //----- Setup and Close --------------------------------------------------//
@@ -217,8 +121,8 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      */
     public synchronized void start() {
         if (STOPPED_UPDATER.weakCompareAndSet(this, 1, 0)) {
-            LOG.debug("JMS pooled connection factory start method called, no action performed.");
-            connectionProxyFactory.start();
+            LOG.debug("JMS Pooling connection factory start method called, no action performed.");
+            getConnectionsPool();
         }
     }
 
@@ -232,9 +136,12 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     public synchronized void stop() {
         if (STOPPED_UPDATER.weakCompareAndSet(this, 0, 1)) {
             LOG.debug("Stopping the pooled connection factory, number of connections in pool = {}",
-                      connectionProxyFactory != null ? connectionProxyFactory.getNumConnections() : 0);
+                      connectionsPool != null ? connectionsPool.getNumIdle() : 0);
             try {
-                connectionProxyFactory.stop();
+                if (connectionsPool != null) {
+                    connectionsPool.close();
+                    connectionsPool = null;
+                }
             } catch (Exception ignored) {
                 LOG.trace("Caught exception on close of the Connection pool during stop: ", ignored);
             }
@@ -260,7 +167,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      */
     public synchronized void clear() {
         if (!isStopped()) {
-            connectionProxyFactory.clear();
+            getConnectionsPool().clear();
         }
     }
 
@@ -273,7 +180,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
         if (isStopped()) {
             return 0;
         } else {
-            return connectionProxyFactory.getNumConnections();
+            return getConnectionsPool().getNumIdle();
         }
     }
 
@@ -289,7 +196,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see setMaxIdleSessionsPerConnection
      */
     public int getMaxIdleSessionsPerConnection() {
-        return connectionProxyFactory.getMaxIdleSessionsPerConnection();
+        return connectionConfig.getMaxIdleSessionsPerConnection();
     }
 
     /**
@@ -317,7 +224,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see setMaxSessionsPerConnection
      */
     public void setMaxIdleSessionsPerConnection(int maxIdleSessionsPerConnection) {
-        connectionProxyFactory.setMaxIdleSessionsPerConnection(maxIdleSessionsPerConnection);
+        connectionConfig.setMaxIdleSessionsPerConnection(maxIdleSessionsPerConnection);
     }
 
     /**
@@ -331,7 +238,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see setMaxIdleSessionsPerConnection
      */
     public int getMaxSessionsPerConnection() {
-        return connectionProxyFactory.getMaxSessionsPerConnection();
+        return connectionConfig.getMaxSessionsPerConnection();
     }
 
     /**
@@ -351,7 +258,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *      The maximum number of pooled sessions per connection in the pool.
      */
     public void setMaxSessionsPerConnection(int maxSessionsPerConnection) {
-        connectionProxyFactory.setMaxSessionsPerConnection(maxSessionsPerConnection);
+        connectionConfig.setMaxSessionsPerConnection(maxSessionsPerConnection);
     }
 
     /**
@@ -363,7 +270,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see #setBlockIfSessionPoolIsFull(boolean)
      */
     public boolean isBlockIfSessionPoolIsFull() {
-        return connectionProxyFactory.isBlockIfSessionPoolIsFull();
+        return connectionConfig.isBlockIfSessionPoolIsFull();
     }
 
     /**
@@ -380,7 +287,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *      until a session is available.  defaults to true.
      */
     public void setBlockIfSessionPoolIsFull(boolean block) {
-        connectionProxyFactory.setBlockIfSessionPoolIsFull(block);
+        connectionConfig.setBlockIfSessionPoolIsFull(block);
     }
 
     /**
@@ -390,7 +297,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return the connection idle timeout value in (milliseconds).
      */
     public int getConnectionIdleTimeout() {
-        return connectionProxyFactory.getConnectionIdleTimeout();
+        return connectionConfig.getConnectionIdleTimeout();
     }
 
     /**
@@ -398,18 +305,12 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * Milliseconds (defaults to 30 seconds).
      * <p>
      * For a Connection that is in the pool but has no current users the idle timeout determines how
-     * long the Connection can live before it is eligible for removal from the pool. Normally the
+     * long the Connection can live before it is eligible for removal from the pool.  Normally the
      * connections are tested when an attempt to check one out occurs so a Connection instance can sit
-     * in the pool much longer than its idle timeout if connections are used infrequently. To evict idle
+     * in the pool much longer than its idle timeout if connections are used infrequently.  To evict idle
      * connections in a more timely manner the {@link #setConnectionCheckInterval(long)} can be configured
      * to a non-zero value and the pool will actively check for idle connections that have exceeded their
      * idle timeout value.
-     * <p>
-     * A value of -1 disables idle connection checks while a non-zero value enables a periodic check for
-     * idle connections. The task of checking connections for idle state eviction can contend with the
-     * calls to create new connections if the pool size is large so care should be taken to not set the
-     * check interval too low, the implementation itself reserves the right to enforce a minimum value
-     * for the time between eviction runs when they are enabled.
      *
      * @param connectionIdleTimeout
      *      The maximum time a pooled Connection can sit unused before it is eligible for removal.
@@ -417,7 +318,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see #setConnectionCheckInterval(long)
      */
     public void setConnectionIdleTimeout(int connectionIdleTimeout) {
-        connectionProxyFactory.setConnectionIdleTimeout(connectionIdleTimeout);
+        connectionConfig.setConnectionIdleTimeout(connectionIdleTimeout);
     }
 
     /**
@@ -432,7 +333,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return true if a pooled Session will use only a single anonymous message producer instance.
      */
     public boolean isUseAnonymousProducers() {
-        return connectionProxyFactory.isUseAnonymousProducers();
+        return connectionConfig.isUseAnonymousProducers();
     }
 
     /**
@@ -443,7 +344,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *      Boolean value that configures whether anonymous producers are used.
      */
     public void setUseAnonymousProducers(boolean anonymousProducers) {
-        connectionProxyFactory.setUseAnonymousProducers(anonymousProducers);
+        connectionConfig.setUseAnonymousProducers(anonymousProducers);
     }
 
     /**
@@ -453,7 +354,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return the current explicit producer cache size.
      */
     public int getExplicitProducerCacheSize() {
-        return connectionProxyFactory.getExplicitProducerCacheSize();
+        return connectionConfig.getExplicitProducerCacheSize();
     }
 
     /**
@@ -474,7 +375,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * 		The number of explicit producers to cache in the pooled Session
      */
     public void setExplicitProducerCacheSize(int cacheSize) {
-        connectionProxyFactory.setExplicitProducerCacheSize(cacheSize);
+        connectionConfig.setExplicitProducerCacheSize(cacheSize);
     }
 
     /**
@@ -485,7 +386,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see #setBlockIfSessionPoolIsFull(boolean)
      */
     public long getBlockIfSessionPoolIsFullTimeout() {
-        return connectionProxyFactory.getBlockIfSessionPoolIsFullTimeout();
+        return connectionConfig.getBlockIfSessionPoolIsFullTimeout();
     }
 
     /**
@@ -507,7 +408,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see #setMaxSessionsPerConnection(int)
      */
     public void setBlockIfSessionPoolIsFullTimeout(long blockIfSessionPoolIsFullTimeout) {
-        connectionProxyFactory.setBlockIfSessionPoolIsFullTimeout(blockIfSessionPoolIsFullTimeout);
+        connectionConfig.setBlockIfSessionPoolIsFullTimeout(blockIfSessionPoolIsFullTimeout);
     }
 
     /**
@@ -516,7 +417,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return if the pool is configured to assume connections are fault tolerant.
      */
     public boolean isFaultTolerantConnections() {
-        return connectionProxyFactory.isFaultTolerantConnections();
+        return connectionConfig.isFaultTolerantConnections();
     }
 
     /**
@@ -539,7 +440,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * 		Boolean value indicating if the pool should assume connection are fault tolerant.
      */
     public void setFaultTolerantConnections(boolean faultTolerantConnections) {
-        connectionProxyFactory.setFaultTolerantConnections(faultTolerantConnections);
+        connectionConfig.setFaultTolerantConnections(faultTolerantConnections);
     }
 
     //----- Connection Factory Configuration -------------------------------------------//
@@ -551,7 +452,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return the maxConnections that will be created for this pool.
      */
     public int getMaxConnections() {
-        return connectionProxyFactory.getMaxConnections();
+        return maxConnections;
     }
 
     /**
@@ -564,7 +465,11 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * 		the maximum Connections to pool for a given user / password combination.
      */
     public void setMaxConnections(int maxConnections) {
-        connectionProxyFactory.setMaxConnections(maxConnections);
+        this.maxConnections = maxConnections;
+        if (!isStopped()) {
+            getConnectionsPool().setMaxIdlePerKey(maxConnections);
+            getConnectionsPool().setMaxTotalPerKey(maxConnections);
+        }
     }
 
     /**
@@ -573,7 +478,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return the number of milliseconds to sleep between runs of the connection check thread.
      */
     public long getConnectionCheckInterval() {
-        return connectionProxyFactory.getConnectionCheckInterval();
+        return connectionCheckInterval;
     }
 
     /**
@@ -590,116 +495,193 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see #setConnectionIdleTimeout(int)
      */
     public void setConnectionCheckInterval(long connectionCheckInterval) {
-        connectionProxyFactory.setConnectionCheckInterval(connectionCheckInterval);
-    }
-
-    /**
-     * Checks if this pooled {@link ConnectionFactory} is creating its own {@link JMSContext} instances around
-     * pooled connections or if the contexts from the configured provider are used unpooled.
-     *
-     * @return the true if the pool is using the provider's JMSContext instead of a pooled version.
-     */
-    public boolean isUseProviderJMSContext() {
-        return useProviderJMSContext;
-    }
-
-    /**
-     * Controls the behavior of the {@link JmsPoolConnectionFactory#createContext} methods.
-     * <p>
-     * By default this value is set to false and the JMS Pool will use n pooled version of
-     * a JMSContext to wrap Connections from the pool.  These pooled JMSContext objects have certain
-     * limitations which may not be desirable in some cases.  To use the JMSContext implementation
-     * from the underlying JMS provider this option can be set to true however in that case no
-     * pooling will be applied to the JMSContext's create or their underlying connections.
-     *
-     * @param useProviderJMSContext
-     * 		Boolean value indicating whether the pool should include JMSContext in the pooling.
-     */
-    public void setUseProviderJMSContext(boolean useProviderJMSContext) {
-        this.useProviderJMSContext = useProviderJMSContext;
+        this.connectionCheckInterval = connectionCheckInterval;
+        if (!isStopped()) {
+            getConnectionsPool().setDurationBetweenEvictionRuns(Duration.ofMillis(connectionCheckInterval));
+        }
     }
 
     //----- Internal implementation ------------------------------------------//
 
-    protected JmsPoolConnection newJmsPoolConnection(String username, String password) throws JMSException {
-        return newPooledConnectionWrapper(connectionProxyFactory.createConnection(username, password));
-    }
-
     /**
-     * Allows subclasses to create an appropriate JmsPoolConnection wrapper for the newly
-     * create connection such as one that provides support for XA Transactions.
+     * Delegate that creates each instance of an ConnectionPool object. Subclasses can override
+     * this method to customize the type of connection pool returned.
      *
+     * @param configuration
+     * 		The configuration to assign to the newly created shared connection instance.
      * @param connection
-     * 		The {@link JmsPoolConnection} to wrap.
+     * 		The connection that is being added into the pool.
      *
-     * @return a new {@link JmsPoolConnection} that wraps the given {@link JmsPoolConnectionProxy}
+     * @return instance of a new ConnectionPool.
      */
-    protected JmsPoolConnection newPooledConnectionWrapper(JmsPoolConnectionProxy connection) {
-        return new JmsPoolConnection(connection);
-    }
+    protected abstract CP createConnectionProxy(JmsPoolConnectionConfiguration configuration, Connection connection);
 
     /**
-     * Allows subclasses to create an appropriate JmsPoolJMSContext wrapper for the newly
-     * create JMSContext such as one that provides support for XA Transactions.
+     * Creates a JMS {@link Connection} using the assigned provider {@link ConnectionFactory} instance which might
+     * be an XA based factory which does not implement {@link ConnectionFactory} itself but does return connections
+     * that implement {@link XAConnection} which itself implements {@link Connection}.
      *
-     * @param connection
-     * 		The {@link JmsPoolConnection} to use in the JMSContext wrapper.
-     * @param sessionMode
-     * 		The JMS Session acknowledgement mode to use in the {@link JMSContext}
-     *
-     * @return a new {@link JmsPoolJMSContext} that wraps the given {@link JmsPoolConnection}
-     */
-    protected JmsPoolJMSContext newPooledConnectionContext(JmsPoolConnection connection, int sessionMode) {
-        return new JmsPoolJMSContext(connection, sessionMode);
-    }
-
-    /**
-     * Create a new {@link JMSContext} using the provided credentials and Session mode
-     *
-     * @param username
-     * 		The user name to use when creating the context.
+     * @param userName
+     * 	The user name to use when creating the connection.
      * @param password
-     * 		The password to use when creating the context.
-     * @param sessionMode
-     * 		The session mode to use when creating the context.
+     * 	The password to use when creating the connection.
      *
-     * @return a new JMSContext created using the given configuration data..
+     * @return a new JMS Connection created using the provider connection factory.
      *
-     * @throws JMSRuntimeException if an error occurs while creating the new JMS Context.
+     * @throws JMSException if the provider throws a {@link JMSException} when asked for a new connection.
      */
-    protected JMSContext createProviderContext(String username, String password, int sessionMode) {
-        final ConnectionFactory factory = connectionProxyFactory.getConnectionFactory();
+    protected abstract Connection createProviderConnection(String userName, String password) throws JMSException;
 
-        if (factory != null) {
-            if (username == null && password == null) {
-                return factory.createContext(sessionMode);
-            } else {
-                return factory.createContext(username, password, sessionMode);
-            }
-        } else {
-            throw new IllegalStateRuntimeException("No ConnectionFactory instance assigned to the pool ConnectionFactory");
+    GenericKeyedObjectPool<JmsPoolConnectionKey, CP> getConnectionsPool() {
+        if (!isStopped() && connectionsPool == null) {
+            final GenericKeyedObjectPoolConfig<CP> poolConfig = new GenericKeyedObjectPoolConfig<>();
+            poolConfig.setJmxEnabled(false);
+
+            connectionsPool = new GenericKeyedObjectPool<JmsPoolConnectionKey, CP>(
+                new KeyedPooledObjectFactory<JmsPoolConnectionKey, CP>() {
+                    @Override
+                    public PooledObject<CP> makeObject(JmsPoolConnectionKey connectionKey) throws Exception {
+                        final Connection delegate = createProviderConnection(connectionKey.getUserName(), connectionKey.getPassword());
+                        final CP connection = createConnectionProxy(connectionConfig.snapshot(), delegate);
+
+                        LOG.trace("Created new connection: {}", connection);
+                        JmsPoolAbstractConnectionProxyFactory.this.mostRecentlyCreated.set(connection);
+
+                        return new DefaultPooledObject<CP>(connection);
+                    }
+
+                    @Override
+                    public void destroyObject(JmsPoolConnectionKey connectionKey, PooledObject<CP> pooledObject) throws Exception {
+                        final JmsPoolConnectionProxy connection = pooledObject.getObject();
+
+                        try {
+                            LOG.trace("Destroying connection: {}", connection);
+                            connection.destroy();
+                        } catch (Exception e) {
+                            LOG.warn("Close connection failed for connection: " + connection + ". This exception will be ignored.",e);
+                        }
+                    }
+
+                    @Override
+                    public boolean validateObject(JmsPoolConnectionKey connectionKey, PooledObject<CP> pooledObject) {
+                        final CP connection = pooledObject.getObject();
+
+                        return connection == null ? false : connection.checkIsUsable();
+                    }
+
+                    @Override
+                    public void activateObject(JmsPoolConnectionKey connectionKey, PooledObject<CP> pooledObject) throws Exception {
+                    }
+
+                    @Override
+                    public void passivateObject(JmsPoolConnectionKey connectionKey, PooledObject<CP> pooledObject) throws Exception {
+                    }
+
+                }, poolConfig);
+
+            // Set max idle (not max active) since our connections always idle in the pool.
+            connectionsPool.setMaxIdlePerKey(DEFAULT_MAX_CONNECTIONS);
+            connectionsPool.setMinIdlePerKey(1); // Always want one connection pooled.
+            connectionsPool.setLifo(false);
+            connectionsPool.setBlockWhenExhausted(false);
+            connectionsPool.setDurationBetweenEvictionRuns(Duration.ofMillis(connectionCheckInterval));
+            connectionsPool.setMinEvictableIdleDuration(Duration.ofMillis(Long.MAX_VALUE));
+            connectionsPool.setTestOnBorrow(true);
+            connectionsPool.setTestWhileIdle(true);
+            connectionsPool.setTestOnReturn(true);
+
+            // Don't use the default eviction policy as it ignores our own idle timeout option.
+            final EvictionPolicy<CP> policy = new EvictionPolicy<>() {
+
+                @Override
+                public boolean evict(EvictionConfig config, PooledObject<CP> underTest, int idleCount) {
+                    return false; // We use the validation of the instance to check for idle.
+                }
+            };
+
+            connectionsPool.setEvictionPolicy(policy);
         }
+
+        return connectionsPool;
     }
 
-    //----- JNDI Operations --------------------------------------------------//
+    private synchronized CP createJmsPoolConnection(String userName, String password) throws JMSException {
+        if (isStopped()) {
+            LOG.debug("The JMS pooling connection factoring is stopped, skipping create new connection.");
+            throw new IllegalStateException("Cannot create a new JMS connection from a stopped pooled connection factory");
+        }
 
-    /**
-     * Called by any superclass that implements a JNDI Referenceable or similar that needs to collect
-     * the properties of this class for storage etc.
-     *
-     * This method should be updated any time there is a new property added.
-     *
-     * @param props
-     *        a properties object that should be filled in with this objects property values.
-     */
-    protected void populateProperties(Properties props) {
-        props.setProperty("maxSessionsPerConnection", Integer.toString(getMaxSessionsPerConnection()));
-        props.setProperty("maxConnections", Integer.toString(getMaxConnections()));
-        props.setProperty("connectionIdleTimeout", Integer.toString(getConnectionIdleTimeout()));
-        props.setProperty("connectionCheckInterval", Long.toString(getConnectionCheckInterval()));
-        props.setProperty("useAnonymousProducers", Boolean.toString(isUseAnonymousProducers()));
-        props.setProperty("blockIfSessionPoolIsFull", Boolean.toString(isBlockIfSessionPoolIsFull()));
-        props.setProperty("blockIfSessionPoolIsFullTimeout", Long.toString(getBlockIfSessionPoolIsFullTimeout()));
-        props.setProperty("useProviderJMSContext", Boolean.toString(isUseProviderJMSContext()));
+        if (getConnectionFactory() == null) {
+            throw new IllegalStateException("No JMS client ConnectionFactory instance has been configured");
+        }
+
+        final JmsPoolConnectionKey key = new JmsPoolConnectionKey(userName, password);
+        CP connection = null;
+
+        // Place a new idle connection into the pool as we are under the limit, once we reach
+        // the limit the pool will be in FIFO mode and the least most used entry in the pool
+        // will be returned but until then it will be in LIFO mode and the most recently used
+        // entry will be added
+        if (getConnectionsPool().getNumIdle(key) < getMaxConnections()) {
+            try {
+                connectionsPool.addObject(key);
+                connection = mostRecentlyCreated.getAndSet(null);
+            } catch (Exception e) {
+                throw JMSExceptionSupport.create("Error while attempting to add new Connection to the pool", e);
+            }
+        }
+
+        if (connection == null) {
+            try {
+                int exhaustedPoolRecoveryAttempts = 0;
+                long exhaustedPoolRecoveryBackoff = EXHAUSTION_RECOVER_INITIAL_BACKOFF;
+
+                // We can race against other threads returning the connection when there is an
+                // expiration or idle timeout.  We keep pulling out ConnectionPool instances until
+                // we win and get a non-closed instance and then increment the reference count
+                // under lock to prevent another thread from triggering an expiration check and
+                // pulling the rug out from under us.
+                while (connection == null) {
+                    try {
+                        connection = connectionsPool.borrowObject(key);
+                    } catch (NoSuchElementException nse) {
+                        if (exhaustedPoolRecoveryAttempts++ < EXHUASTION_RECOVER_RETRY_LIMIT) {
+                            LOG.trace("Recover attempt {} from exhausted pool by refilling pool key and creating new Connection", exhaustedPoolRecoveryAttempts);
+                            if (exhaustedPoolRecoveryAttempts > 1) {
+                                LockSupport.parkNanos(exhaustedPoolRecoveryBackoff);
+                                exhaustedPoolRecoveryBackoff = Math.min(EXHAUSTION_RECOVER_BACKOFF_LIMIT,
+                                                                        exhaustedPoolRecoveryBackoff + exhaustedPoolRecoveryBackoff);
+                            } else {
+                                Thread.yield();
+                            }
+
+                            connectionsPool.addObject(key);
+                            continue;
+                        } else {
+                            throw JMSExceptionSupport.createResourceAllocationException(nse);
+                        }
+                    }
+                    synchronized (connection) {
+                        if (connection.isClosed()) {
+                            // Return the bad one to the pool and let if get destroyed as normal.
+                            connectionsPool.returnObject(key, connection);
+                            connection = null;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                throw JMSExceptionSupport.create("Error while attempting to retrieve a connection from the pool", e);
+            }
+
+            try {
+                connectionsPool.returnObject(key, connection);
+            } catch (Exception e) {
+                throw JMSExceptionSupport.create("Error when returning connection to the pool", e);
+            }
+
+            connection.acquire();
+        }
+
+        return connection;
     }
 }

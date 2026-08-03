@@ -25,6 +25,14 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.messaginghub.pooled.jms.mock.MockJMSConnection;
+import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
+import org.messaginghub.pooled.jms.mock.MockJMSMessageProducer;
+import org.messaginghub.pooled.jms.mock.MockJMSSession;
+
+import jakarta.jms.Connection;
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
 import jakarta.jms.Message;
@@ -36,13 +44,6 @@ import jakarta.jms.Session;
 import jakarta.jms.Topic;
 import jakarta.jms.TopicPublisher;
 import jakarta.jms.TopicSession;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import org.messaginghub.pooled.jms.mock.MockJMSConnection;
-import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
-import org.messaginghub.pooled.jms.mock.MockJMSMessageProducer;
-import org.messaginghub.pooled.jms.mock.MockJMSSession;
 
 @Timeout(60)
 public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
@@ -60,7 +61,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
     private void doTestCreateMessageProducer(boolean useAnonymousProducers) throws JMSException {
         cf.setUseAnonymousProducers(useAnonymousProducers);
 
-        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        Connection connection = cf.createConnection();
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
         Queue queue1 = session.createTemporaryQueue();
@@ -70,9 +71,9 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(queue2);
 
         if (useAnonymousProducers) {
-            assertSame(producer1.getMessageProducer(), producer2.getMessageProducer());
+            assertSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
         } else {
-            assertNotSame(producer1.getMessageProducer(), producer2.getMessageProducer());
+            assertNotSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
         }
 
         connection.close();
@@ -98,7 +99,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(null);
 
         // Both cases should result in a single anonymous cached producer instance.
-        assertSame(producer1.getMessageProducer(), producer2.getMessageProducer());
+        assertSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
 
         connection.close();
     }
@@ -126,9 +127,9 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         JmsPoolTopicPublisher publisher2 = (JmsPoolTopicPublisher) session.createPublisher(topic2);
 
         if (useAnonymousProducers) {
-            assertSame(publisher1.getMessageProducer(), publisher2.getMessageProducer());
+            assertSame(publisher1.getProviderMessageProducer(), publisher2.getProviderMessageProducer());
         } else {
-            assertNotSame(publisher1.getMessageProducer(), publisher2.getMessageProducer());
+            assertNotSame(publisher1.getProviderMessageProducer(), publisher2.getProviderMessageProducer());
         }
 
         connection.close();
@@ -154,7 +155,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         JmsPoolTopicPublisher publisher2 = (JmsPoolTopicPublisher) session.createPublisher(null);
 
         // Both cases should result in a single anonymous cached producer instance.
-        assertSame(publisher1.getMessageProducer(), publisher2.getMessageProducer());
+        assertSame(publisher1.getProviderMessageProducer(), publisher2.getProviderMessageProducer());
 
         connection.close();
     }
@@ -182,9 +183,9 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         JmsPoolQueueSender sender2 = (JmsPoolQueueSender) session.createSender(queue2);
 
         if (useAnonymousProducers) {
-            assertSame(sender1.getMessageProducer(), sender2.getMessageProducer());
+            assertSame(sender1.getProviderMessageProducer(), sender2.getProviderMessageProducer());
         } else {
-            assertNotSame(sender1.getMessageProducer(), sender2.getMessageProducer());
+            assertNotSame(sender1.getProviderMessageProducer(), sender2.getProviderMessageProducer());
         }
 
         connection.close();
@@ -210,7 +211,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         JmsPoolQueueSender sender2 = (JmsPoolQueueSender) session.createSender(null);
 
         // Both cases should result in a single anonymous cached producer instance.
-        assertSame(sender1.getMessageProducer(), sender2.getMessageProducer());
+        assertSame(sender1.getProviderMessageProducer(), sender2.getProviderMessageProducer());
 
         connection.close();
     }
@@ -267,23 +268,23 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(queue2);
 
         if (useAnonymousProducers) {
-            assertSame(producer1.getMessageProducer(), producer2.getMessageProducer());
-            assertNull(producer1.getMessageProducer().getDestination());
-            assertNull(producer2.getMessageProducer().getDestination());
+            assertSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
+            assertNull(producer1.getProviderMessageProducer().getDestination());
+            assertNull(producer2.getProviderMessageProducer().getDestination());
         } else if (explicitCacheSize > 0) {
-            assertNotSame(producer1.getMessageProducer(), producer2.getMessageProducer());
-            assertNotNull(producer1.getMessageProducer().getDestination());
-            assertNotNull(producer2.getMessageProducer().getDestination());
+            assertNotSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
+            assertNotNull(producer1.getProviderMessageProducer().getDestination());
+            assertNotNull(producer2.getProviderMessageProducer().getDestination());
 
             JmsPoolMessageProducer producer3 = (JmsPoolMessageProducer) session.createProducer(queue1);
             JmsPoolMessageProducer producer4 = (JmsPoolMessageProducer) session.createProducer(queue2);
 
-            assertSame(producer1.getMessageProducer(), producer3.getMessageProducer());
-            assertSame(producer2.getMessageProducer(), producer4.getMessageProducer());
+            assertSame(producer1.getProviderMessageProducer(), producer3.getProviderMessageProducer());
+            assertSame(producer2.getProviderMessageProducer(), producer4.getProviderMessageProducer());
         } else {
-            assertNotSame(producer1.getMessageProducer(), producer2.getMessageProducer());
-            assertNotNull(producer1.getMessageProducer().getDestination());
-            assertNotNull(producer2.getMessageProducer().getDestination());
+            assertNotSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
+            assertNotNull(producer1.getProviderMessageProducer().getDestination());
+            assertNotNull(producer2.getProviderMessageProducer().getDestination());
         }
 
         connection.close();
@@ -295,7 +296,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         final AtomicInteger producersClosed = new AtomicInteger();
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -345,7 +346,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         final AtomicInteger producersClosed = new AtomicInteger();
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -399,7 +400,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         final AtomicInteger producersClosed = new AtomicInteger();
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -453,7 +454,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         final AtomicInteger producersClosed = new AtomicInteger();
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -510,7 +511,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         final AtomicInteger producersClosed = new AtomicInteger();
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -577,7 +578,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         final AtomicInteger producersClosed = new AtomicInteger();
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -644,7 +645,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         final AtomicInteger producersClosed = new AtomicInteger();
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override

@@ -20,16 +20,33 @@ import java.lang.reflect.Method;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
+
 import javax.net.ssl.SSLServerSocket;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Utility class used by the connection pool to assign class properties from sets of key / value pairs
+ */
 public final class IntrospectionSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(IntrospectionSupport.class);
 
     private IntrospectionSupport() {}
 
+    /**
+     * Sets the value associated with each key in the provided {@link Map} to a property
+     * in the target object with the matching bean name of the key. Upon assignment the
+     * key / value pair is removed the to properties map.
+     *
+     * @param target
+     * 	The object whose properties should be assign to.
+     * @param props
+     * 	The Map containing the key and values used to assign properties in the target.
+     *
+     * @return <code>true</code> if any values were assigned to the target object.
+     */
     public static boolean setProperties(Object target, Map<String, Object> props) {
         boolean rc = false;
 
@@ -51,6 +68,18 @@ public final class IntrospectionSupport {
         return rc;
     }
 
+    /**
+     * Sets the value associated with the given property name to the target object passed.
+     *
+     * @param target
+     * 	The object whose properties should be assign to.
+     * @param name
+     * 	The name of the property in the target object to assign the given value to.
+     * @param value
+     * 	The value to assign to the named property.
+     *
+     * @return <code>true</code> if any value was assigned to the target object.
+     */
     public static boolean setProperty(Object target, String name, Object value) {
         try {
             Class<?> clazz = target.getClass();

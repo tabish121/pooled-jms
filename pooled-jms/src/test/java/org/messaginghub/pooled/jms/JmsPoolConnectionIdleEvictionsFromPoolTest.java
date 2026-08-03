@@ -40,7 +40,7 @@ public class JmsPoolConnectionIdleEvictionsFromPoolTest extends JmsPoolTestSuppo
         cf.setConnectionCheckInterval(10);
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
-        Connection amq1 = connection.getConnection();
+        Connection amq1 = connection.getProviderConnection();
 
         connection.close();
 
@@ -48,24 +48,24 @@ public class JmsPoolConnectionIdleEvictionsFromPoolTest extends JmsPoolTestSuppo
         TimeUnit.MILLISECONDS.sleep(20);
 
         JmsPoolConnection connection2 = (JmsPoolConnection) cf.createConnection();
-        Connection amq2 = connection2.getConnection();
-        assertTrue(!amq1.equals(amq2), "not equal");
+        Connection amq2 = connection2.getProviderConnection();
+        assertTrue(!amq1.equals(amq2), "Pooled connection instances are not equal");
     }
 
     @Test
     public void testEvictionOfSeeminglyClosedConnection() throws Exception {
-        cf.setConnectionIdleTimeout(10);
-        cf.setConnectionCheckInterval(50_000); // Validation check should capture and evicit this
+        cf.setConnectionIdleTimeout((int) TimeUnit.MINUTES.toMillis(10));
+        cf.setConnectionCheckInterval(-1); // Validation check should capture and evict this
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
-        MockJMSConnection mockConnection1 = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection1 = (MockJMSConnection) connection.getProviderConnection();
 
         connection.close();
 
         mockConnection1.close();
 
         JmsPoolConnection connection2 = (JmsPoolConnection) cf.createConnection();
-        Connection mockConnection2 = connection2.getConnection();
+        Connection mockConnection2 = connection2.getProviderConnection();
 
         assertNotSame(mockConnection1, mockConnection2);
     }
@@ -84,7 +84,7 @@ public class JmsPoolConnectionIdleEvictionsFromPoolTest extends JmsPoolTestSuppo
         // get a connection from pool again, it should be the same underlying connection
         // as before and should not be idled out since an open session exists.
         JmsPoolConnection connection2 = (JmsPoolConnection) cf.createConnection();
-        assertSame(connection.getConnection(), connection2.getConnection());
+        assertSame(connection.getProviderConnection(), connection2.getProviderConnection());
 
         // now the session is closed even when it should not be
         try {
@@ -94,7 +94,7 @@ public class JmsPoolConnectionIdleEvictionsFromPoolTest extends JmsPoolTestSuppo
             fail("Session should be fine, instead: " + e.getMessage());
         }
 
-        Connection original = connection.getConnection();
+        Connection original = connection.getProviderConnection();
 
         connection.close();
         connection2.close();
@@ -105,7 +105,7 @@ public class JmsPoolConnectionIdleEvictionsFromPoolTest extends JmsPoolTestSuppo
         // get a connection from pool again, it should be a new Connection instance as the
         // old one should have been inactive and idled out.
         JmsPoolConnection connection3 = (JmsPoolConnection) cf.createConnection();
-        assertNotSame(original, connection3.getConnection());
+        assertNotSame(original, connection3.getProviderConnection());
     }
 
     @Test
@@ -121,7 +121,7 @@ public class JmsPoolConnectionIdleEvictionsFromPoolTest extends JmsPoolTestSuppo
         // would be subject to reaping on idle timeout if not active but should never be
         // reaped if active.
         final JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
-        assertNotSame(connection.getConnection(), safeConnection.getConnection());
+        assertNotSame(connection.getProviderConnection(), safeConnection.getProviderConnection());
 
         // Session we will use to check on liveness.
         final Session s = connection.createSession(Session.SESSION_TRANSACTED);
@@ -136,7 +136,7 @@ public class JmsPoolConnectionIdleEvictionsFromPoolTest extends JmsPoolTestSuppo
             fail("Session should be fine, instead: " + e.getMessage());
         }
 
-        final Connection underlying = connection.getConnection();
+        final Connection underlying = connection.getProviderConnection();
 
         connection.close();
 
@@ -153,6 +153,6 @@ public class JmsPoolConnectionIdleEvictionsFromPoolTest extends JmsPoolTestSuppo
         // get a connection from pool again, it should be a new Connection instance as the
         // old one should have been inactive and idled out.
         final JmsPoolConnection another = (JmsPoolConnection) cf.createConnection();
-        assertNotSame(underlying, another.getConnection());
+        assertNotSame(underlying, another.getProviderConnection());
     }
 }

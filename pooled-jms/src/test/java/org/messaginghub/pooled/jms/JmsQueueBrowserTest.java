@@ -20,15 +20,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
 import jakarta.jms.Queue;
 import jakarta.jms.QueueBrowser;
 import jakarta.jms.QueueSession;
 import jakarta.jms.Session;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
 
 /**
  * Tests for the JMS Pool QueueBrowser wrapper
@@ -72,12 +72,12 @@ public class JmsQueueBrowserTest extends JmsPoolTestSupport {
         Queue queue = session.createTemporaryQueue();
         JmsPoolQueueBrowser browser = (JmsPoolQueueBrowser) session.createBrowser(queue);
 
-        assertNotNull(browser.getQueueBrowser());
+        assertNotNull(browser.getProviderQueueBrowser());
 
         browser.close();
 
         try {
-            browser.getQueueBrowser();
+            browser.getProviderQueueBrowser();
             fail("Should not be able to use a closed browser");
         } catch (IllegalStateException ise) {
         }

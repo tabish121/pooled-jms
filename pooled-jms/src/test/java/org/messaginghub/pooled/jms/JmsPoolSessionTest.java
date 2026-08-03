@@ -20,8 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -53,6 +53,7 @@ import jakarta.jms.Session;
 import jakarta.jms.TemporaryQueue;
 import jakarta.jms.TemporaryTopic;
 import jakarta.jms.Topic;
+import jakarta.jms.XASession;
 
 @Timeout(60)
 public class JmsPoolSessionTest extends JmsPoolTestSupport {
@@ -64,28 +65,6 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         assertNotNull(session.toString());
         session.close();
         assertNotNull(session.toString());
-    }
-
-    @Test
-    public void testIsIgnoreClose() throws Exception {
-        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
-        JmsPoolSession session = (JmsPoolSession) connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        assertFalse(session.isIgnoreClose());
-        session.setIgnoreClose(true);
-        assertTrue(session.isIgnoreClose());
-    }
-
-    @Test
-    public void testIgnoreClose() throws Exception {
-        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
-        JmsPoolSession session = (JmsPoolSession) connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        assertFalse(session.isIgnoreClose());
-        session.setIgnoreClose(true);
-        assertTrue(session.isIgnoreClose());
-
-        session.close();
-
-        assertEquals(Session.AUTO_ACKNOWLEDGE, session.getAcknowledgeMode());
     }
 
     @Test
@@ -102,21 +81,6 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         try {
             session.run();
-            fail("Session should be closed.");
-        } catch (IllegalStateRuntimeException isre) {}
-    }
-
-    @Test
-    public void testGetXAResource() throws Exception {
-        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
-        JmsPoolSession session = (JmsPoolSession) connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-
-        assertNull(session.getXAResource(), "Non-XA session should not return an XA Resource");
-
-        session.close();
-
-        try {
-            session.getXAResource();
             fail("Session should be closed.");
         } catch (IllegalStateRuntimeException isre) {}
     }
@@ -148,7 +112,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
         JmsPoolSession session = (JmsPoolSession) connection.createSession(Session.SESSION_TRANSACTED);
-        MockJMSSession mockSession = (MockJMSSession) session.getInternalSession();
+        MockJMSSession mockSession = (MockJMSSession) session.getProviderSession();
         mockSession.addSessionListener(new MockJMSDefaultSessionListener() {
 
             @Override
@@ -164,6 +128,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
     @Test
     public void testCloseWithErrorOnRollbackInvalidatesSession() throws Exception {
         final AtomicBoolean rolledBack = new AtomicBoolean();
+        final AtomicBoolean closed = new AtomicBoolean();
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
         JmsPoolSession session = (JmsPoolSession) connection.createSession(Session.SESSION_TRANSACTED);
@@ -171,7 +136,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         assertEquals(1, connection.getNumSessions());
         assertEquals(0, connection.getNumtIdleSessions());
 
-        MockJMSSession mockSession = (MockJMSSession) session.getInternalSession();
+        MockJMSSession mockSession = (MockJMSSession) session.getProviderSession();
         mockSession.addSessionListener(new MockJMSDefaultSessionListener() {
 
             @Override
@@ -180,10 +145,16 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
                 throw new JMSException("Failed to rollback");
             }
+
+            @Override
+            public void onSessionClosed(MockJMSSession session) throws JMSException {
+                closed.set(true);
+            }
         });
 
         session.close();
 
+        assertTrue(closed.get(), "Session close should have been called");
         assertTrue(rolledBack.get(), "Session should rollback on close");
 
         assertEquals(0, connection.getNumSessions());
@@ -254,7 +225,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
     public void testGetXAResourceOnNonXAPooledSession() throws Exception {
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
         JmsPoolSession session = (JmsPoolSession) connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        assertNull(session.getXAResource());
+        assertFalse(session instanceof XASession);
     }
 
     @Test
@@ -400,6 +371,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         // max idle sessions
         cf.setMaxSessionsPerConnection(NUM_SESSIONS);
         cf.setMaxIdleSessionsPerConnection(NUM_IDLE_SESSIONS);
+        cf.setBlockIfSessionPoolIsFull(false);
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
         assertEquals(0, connection.getNumActiveSessions());
@@ -408,6 +380,10 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         for (int i = 0; i < NUM_SESSIONS; i++) {
             sessions.add(connection.createSession(false, Session.AUTO_ACKNOWLEDGE));
         }
+
+        assertEquals(NUM_SESSIONS, connection.getNumActiveSessions());
+
+        assertThrows(IllegalStateException.class, () -> connection.createSession(false, Session.AUTO_ACKNOWLEDGE));
 
         assertEquals(NUM_SESSIONS, connection.getNumActiveSessions());
 
@@ -572,7 +548,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         session.setMessageListener(listener);
         assertSame(listener, session.getMessageListener());
-        MockJMSSession mockSession = (MockJMSSession) session.getInternalSession();
+        MockJMSSession mockSession = (MockJMSSession) session.getProviderSession();
         assertSame(listener, mockSession.getMessageListener());
 
         session.close();
@@ -607,13 +583,13 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         JmsPoolMessageProducer producer1 = (JmsPoolMessageProducer) session.createProducer(queue1);
         JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(queue2);
 
-        assertNotSame(producer1.getMessageProducer(), producer2.getMessageProducer());
+        assertNotSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
 
         JmsPoolMessageProducer producer3 = (JmsPoolMessageProducer) session.createProducer(queue1);
         JmsPoolMessageProducer producer4 = (JmsPoolMessageProducer) session.createProducer(queue2);
 
-        assertSame(producer1.getMessageProducer(), producer3.getMessageProducer());
-        assertSame(producer2.getMessageProducer(), producer4.getMessageProducer());
+        assertSame(producer1.getProviderMessageProducer(), producer3.getProviderMessageProducer());
+        assertSame(producer2.getProviderMessageProducer(), producer4.getProviderMessageProducer());
 
         connection.close();
     }
@@ -657,22 +633,22 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         JmsPoolMessageProducer producer1 = (JmsPoolMessageProducer) session.createProducer(queue1);
         JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(queue2);
 
-        assertNotSame(producer1.getMessageProducer(), producer2.getMessageProducer());
+        assertNotSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
 
         JmsPoolMessageProducer producer3 = (JmsPoolMessageProducer) session.createProducer(queue3);
         JmsPoolMessageProducer producer4 = (JmsPoolMessageProducer) session.createProducer(queue1);
 
-        assertNotSame(producer1.getMessageProducer(), producer3.getMessageProducer());
-        assertNotSame(producer2.getMessageProducer(), producer3.getMessageProducer());
+        assertNotSame(producer1.getProviderMessageProducer(), producer3.getProviderMessageProducer());
+        assertNotSame(producer2.getProviderMessageProducer(), producer3.getProviderMessageProducer());
 
         // Original MessageProducer should have been evicted from the cache and a new one created
         // for the second call to create a producer on Queue #1
-        assertNotSame(producer1.getMessageProducer(), producer4.getMessageProducer());
+        assertNotSame(producer1.getProviderMessageProducer(), producer4.getProviderMessageProducer());
 
         JmsPoolMessageProducer producer5 = (JmsPoolMessageProducer) session.createProducer(queue1);
 
         // Now we should be back to caching Queue #1
-        assertNotSame(producer1.getMessageProducer(), producer5.getMessageProducer());
+        assertNotSame(producer1.getProviderMessageProducer(), producer5.getProviderMessageProducer());
 
         connection.close();
     }
@@ -691,25 +667,28 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         Queue queue2 = session.createTemporaryQueue();
 
         final JmsPoolMessageProducer producer1 = (JmsPoolMessageProducer) session.createProducer(queue1);
+        final MockJMSMessageProducer mockProducer1 = (MockJMSMessageProducer) producer1.getProviderMessageProducer();
         final JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(queue1);
+        final MockJMSMessageProducer mockProducer2 = (MockJMSMessageProducer) producer2.getProviderMessageProducer();
 
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
             public void onCloseMessageProducer(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
-                if (producer.equals(producer1.getDelegate())) {
+                if (producer.equals(mockProducer1)) {
                     producerClosed.set(true);
                 }
             }
         });
 
-        assertSame(producer1.getMessageProducer(), producer2.getMessageProducer());
+        assertSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
+        assertSame(mockProducer1, mockProducer2);
 
         // This replaces cached producer
         JmsPoolMessageProducer producer3 = (JmsPoolMessageProducer) session.createProducer(queue2);
 
-        assertNotSame(producer1.getMessageProducer(), producer3.getMessageProducer());
+        assertNotSame(producer1.getProviderMessageProducer(), producer3.getProviderMessageProducer());
 
         try {
             producer1.send(session.createMessage());
@@ -763,19 +742,19 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         JmsPoolMessageProducer producer1 = (JmsPoolMessageProducer) session.createProducer(queue);
         JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(queue);
 
-        assertSame(producer1.getMessageProducer(), producer2.getMessageProducer());
+        assertSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
 
         // Creating an anonymous producer should not use the same producer and on next create of
         // explicit producer we should get the cached version.
         JmsPoolMessageProducer producer3 = (JmsPoolMessageProducer) session.createProducer(null);
 
-        assertNotSame(producer1.getMessageProducer(), producer3.getMessageProducer());
-        assertNotSame(producer2.getMessageProducer(), producer3.getMessageProducer());
+        assertNotSame(producer1.getProviderMessageProducer(), producer3.getProviderMessageProducer());
+        assertNotSame(producer2.getProviderMessageProducer(), producer3.getProviderMessageProducer());
 
         JmsPoolMessageProducer producer4 = (JmsPoolMessageProducer) session.createProducer(queue);
 
-        assertSame(producer1.getMessageProducer(), producer4.getMessageProducer());
-        assertSame(producer2.getMessageProducer(), producer4.getMessageProducer());
+        assertSame(producer1.getProviderMessageProducer(), producer4.getProviderMessageProducer());
+        assertSame(producer2.getProviderMessageProducer(), producer4.getProviderMessageProducer());
 
         connection.close();
     }
@@ -795,16 +774,19 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         // Producer 1 would enter the cache, and then be evicted by producer 2
         final JmsPoolMessageProducer producer1 = (JmsPoolMessageProducer) session.createProducer(queue1);
+        final MockJMSMessageProducer mockProducer1 = (MockJMSMessageProducer) producer1.getProviderMessageProducer();
         final JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(queue2);
+        final MockJMSMessageProducer mockProducer2 = (MockJMSMessageProducer) producer2.getProviderMessageProducer();
 
-        assertNotSame(producer1.getMessageProducer(), producer2.getMessageProducer());
+        assertNotSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
+        assertNotSame(mockProducer1, mockProducer2);
 
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
             public void onCloseMessageProducer(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
-                if (producer.equals(producer1.getDelegate())) {
+                if (producer.equals(mockProducer1)) {
                     producer1Closed.set(true);
                 }
             }
@@ -824,10 +806,10 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
 
         JmsPoolSession session1 = (JmsPoolSession) connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        MockJMSSession mockSession1 = (MockJMSSession) session1.getInternalSession();
+        MockJMSSession mockSession1 = (MockJMSSession) session1.getProviderSession();
 
         JmsPoolSession session2 = (JmsPoolSession) connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        MockJMSSession mockSession2 = (MockJMSSession) session2.getInternalSession();
+        MockJMSSession mockSession2 = (MockJMSSession) session2.getProviderSession();
 
         assertNotSame(mockSession1, mockSession2);
 
@@ -835,7 +817,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         mockSession1.close();
 
         JmsPoolSession session3 = (JmsPoolSession) connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        MockJMSSession mockSession3 = (MockJMSSession) session3.getInternalSession();
+        MockJMSSession mockSession3 = (MockJMSSession) session3.getProviderSession();
 
         assertNotSame(mockSession1, mockSession3);
         assertNotSame(mockSession2, mockSession3);

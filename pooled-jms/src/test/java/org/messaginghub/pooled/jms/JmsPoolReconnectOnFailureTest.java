@@ -24,13 +24,6 @@ import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import jakarta.jms.Connection;
-import jakarta.jms.ExceptionListener;
-import jakarta.jms.JMSException;
-import jakarta.jms.MessageProducer;
-import jakarta.jms.Queue;
-import jakarta.jms.Session;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
@@ -39,6 +32,13 @@ import org.messaginghub.pooled.jms.mock.MockJMSConnection;
 import org.messaginghub.pooled.jms.mock.MockJMSConnectionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.Connection;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
 
 @Timeout(60)
 public class JmsPoolReconnectOnFailureTest extends JmsPoolTestSupport {
@@ -77,7 +77,7 @@ public class JmsPoolReconnectOnFailureTest extends JmsPoolTestSupport {
         Queue queue = session.createQueue("test");
         MessageProducer producer = session.createProducer(queue);
 
-        MockJMSConnection mockConnection = (MockJMSConnection) ((JmsPoolConnection) connection).getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) ((JmsPoolConnection) connection).getProviderConnection();
         mockConnection.injectConnectionFailure(new IOException("Lost connection"));
 
         assertTrue(failed.await(15, TimeUnit.SECONDS));

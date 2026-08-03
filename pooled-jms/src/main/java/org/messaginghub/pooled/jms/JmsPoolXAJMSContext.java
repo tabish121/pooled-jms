@@ -16,16 +16,19 @@
  */
 package org.messaginghub.pooled.jms;
 
-import jakarta.jms.JMSContext;
-import jakarta.jms.XAJMSContext;
 import javax.transaction.xa.XAResource;
 
+import jakarta.jms.JMSContext;
+import jakarta.jms.XAConnection;
+import jakarta.jms.XAJMSContext;
+
 /**
- * XAJMSContext implementation that wraps a JmsPoolConnection
+ * XAJMSContext implementation that wraps a pooled {@link XAConnection} and provides access
+ * to {@link XAResource} APIs from that connection.
  */
 public class JmsPoolXAJMSContext extends JmsPoolJMSContext implements XAJMSContext {
 
-    public JmsPoolXAJMSContext(JmsPoolConnection connection, int sessionMode) {
+    JmsPoolXAJMSContext(JmsPoolConnection connection, int sessionMode) {
         super(connection, sessionMode);
     }
 
@@ -37,5 +40,10 @@ public class JmsPoolXAJMSContext extends JmsPoolJMSContext implements XAJMSConte
     @Override
     public XAResource getXAResource() {
         return getSession().getXAResource();
+    }
+
+    @Override
+    JmsPoolXASession getSession() {
+        return (JmsPoolXASession) super.getSession();
     }
 }

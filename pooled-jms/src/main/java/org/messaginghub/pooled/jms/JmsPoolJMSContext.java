@@ -19,6 +19,8 @@ package org.messaginghub.pooled.jms;
 import java.io.Serializable;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
+
 import jakarta.jms.BytesMessage;
 import jakarta.jms.Connection;
 import jakarta.jms.ConnectionMetaData;
@@ -42,23 +44,25 @@ import jakarta.jms.TemporaryTopic;
 import jakarta.jms.TextMessage;
 import jakarta.jms.Topic;
 
-import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
-
 /**
  * JMSContext implementation that wraps a JmsPoolConnection
  */
 public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
-    protected final JmsPoolConnection connection;
+    /**
+     * Default value for the auto start flag of this JMS Context wrapper.
+     */
+    public static boolean DEFAULT_JMS_CONTEXT_AUTO_START = true;
 
+    private final JmsPoolConnection connection;
     private final AtomicLong connectionRefCount;
     private final int sessionMode;
 
-    private JmsPoolSession session;
+    private volatile JmsPoolSession session;
     private JmsPoolMessageProducer sharedProducer;
-    private boolean autoStart = true;
+    private boolean autoStart = DEFAULT_JMS_CONTEXT_AUTO_START;
 
-    public JmsPoolJMSContext(JmsPoolConnection connection, int sessionMode) {
+    JmsPoolJMSContext(JmsPoolConnection connection, int sessionMode) {
         this(connection, sessionMode, new AtomicLong(1));
     }
 
@@ -483,9 +487,16 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
         return getClass().getSimpleName() + " { " + connection + " }";
     }
 
-    public Connection getConnection() {
+    /**
+     * Provides access to the underling JMS {@link Connection} that this context is wrapping.
+     * This is primarily meant as a test point and the application logic should not depend on
+     * this method.
+     *
+     * @return the wrapped JMS {@link Connection}
+     */
+    Connection getProviderConnection() {
         try {
-            return connection.getConnection();
+            return connection.getProviderConnection();
         } catch (JMSException jmsex) {
             throw JMSExceptionSupport.createRuntimeException(jmsex);
         }
@@ -493,7 +504,7 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     //----- Internal implementation methods ----------------------------------//
 
-    protected JmsPoolSession getSession() {
+    JmsPoolSession getSession() {
         if (session == null) {
             synchronized (this) {
                 if (session == null) {

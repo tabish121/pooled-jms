@@ -31,6 +31,17 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.Timeout;
+import org.messaginghub.pooled.jms.mock.MockJMSConnection;
+import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
+import org.messaginghub.pooled.jms.mock.MockJMSMessageProducer;
+import org.messaginghub.pooled.jms.mock.MockJMSSession;
+import org.messaginghub.pooled.jms.mock.MockJMSTopic;
+
 import jakarta.jms.CompletionListener;
 import jakarta.jms.DeliveryMode;
 import jakarta.jms.Destination;
@@ -42,17 +53,6 @@ import jakarta.jms.JMSProducer;
 import jakarta.jms.JMSRuntimeException;
 import jakarta.jms.Message;
 import jakarta.jms.MessageFormatRuntimeException;
-
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.api.Timeout;
-import org.messaginghub.pooled.jms.mock.MockJMSConnection;
-import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
-import org.messaginghub.pooled.jms.mock.MockJMSMessageProducer;
-import org.messaginghub.pooled.jms.mock.MockJMSSession;
-import org.messaginghub.pooled.jms.mock.MockJMSTopic;
 
 /**
  * Tests for the JMSProducer implementation provided by the JMS Pool
@@ -118,7 +118,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
     public void testCreateJMSProducer() throws JMSException {
         JmsPoolJMSProducer producer = (JmsPoolJMSProducer) context.createProducer();
         assertNotNull(producer);
-        MockJMSMessageProducer mockProducer = (MockJMSMessageProducer) producer.getMessageProducer();
+        MockJMSMessageProducer mockProducer = (MockJMSMessageProducer) producer.getProviderMessageProducer();
         assertNotNull(mockProducer);
 
         // JMSProducer instances are always anonymous producers.
@@ -127,7 +127,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
         context.close();
 
         try {
-            producer.getMessageProducer();
+            producer.getProviderMessageProducer();
             fail("should throw on closed context.");
         } catch (JMSRuntimeException jmsre) {}
     }
@@ -925,7 +925,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
 
         final AtomicBoolean messageSent = new AtomicBoolean();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -980,7 +980,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
         final AtomicBoolean nonPersistentMessage = new AtomicBoolean();
         final AtomicBoolean persistentMessage = new AtomicBoolean();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -1036,7 +1036,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
         final AtomicBoolean lowPriority = new AtomicBoolean();
         final AtomicBoolean highPriority = new AtomicBoolean();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -1092,7 +1092,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
         final AtomicBoolean nonDefaultTTL = new AtomicBoolean();
         final AtomicBoolean defaultTTL = new AtomicBoolean();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -1124,7 +1124,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
         final String bodyValue = "String-Value";
         final AtomicBoolean bodyValidated = new AtomicBoolean();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -1149,7 +1149,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
 
         final AtomicBoolean bodyValidated = new AtomicBoolean();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -1170,7 +1170,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
         final byte[] bodyValue = new byte[] { 0, 1, 2, 3, 4 };
         final AtomicBoolean bodyValidated = new AtomicBoolean();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -1198,7 +1198,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
         final UUID bodyValue = UUID.randomUUID();
         final AtomicBoolean bodyValidated = new AtomicBoolean();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -1218,7 +1218,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
     public void testRuntimeExceptionFromSendMessage() throws JMSException {
         JMSProducer producer = context.createProducer();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -1237,7 +1237,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
     public void testRuntimeExceptionFromSendByteBody() throws JMSException {
         JMSProducer producer = context.createProducer();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -1256,7 +1256,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
     public void testRuntimeExceptionFromSendMapBody() throws JMSException {
         JMSProducer producer = context.createProducer();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -1275,7 +1275,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
     public void testRuntimeExceptionFromSendSerializableBody() throws JMSException {
         JMSProducer producer = context.createProducer();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -1294,7 +1294,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
     public void testRuntimeExceptionFromSendStringBody() throws JMSException {
         JMSProducer producer = context.createProducer();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -1313,7 +1313,7 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
     public void testRuntimeExceptionOnSendWithCompletion() throws JMSException {
         JMSProducer producer = context.createProducer();
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override

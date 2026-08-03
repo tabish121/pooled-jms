@@ -24,6 +24,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.messaginghub.pooled.jms.mock.MockJMSConnection;
+import org.messaginghub.pooled.jms.mock.MockJMSContext;
+import org.messaginghub.pooled.jms.mock.MockJMSUser;
+
 import jakarta.jms.ExceptionListener;
 import jakarta.jms.IllegalStateRuntimeException;
 import jakarta.jms.JMSContext;
@@ -33,12 +39,6 @@ import jakarta.jms.JMSSecurityRuntimeException;
 import jakarta.jms.Queue;
 import jakarta.jms.Session;
 import jakarta.jms.Topic;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import org.messaginghub.pooled.jms.mock.MockJMSConnection;
-import org.messaginghub.pooled.jms.mock.MockJMSContext;
-import org.messaginghub.pooled.jms.mock.MockJMSUser;
 
 /**
  * Tests for the JMS Pool JMSContext implementation.
@@ -121,12 +121,12 @@ public class JmsPoolJMSContextTest extends JmsPoolTestSupport {
     public void testGetConnectionAfterClosed() {
         JmsPoolJMSContext context = (JmsPoolJMSContext) cf.createContext();
 
-        assertNotNull(context.getConnection());
+        assertNotNull(context.getProviderConnection());
 
         context.close();
 
         try {
-            context.getConnection();
+            context.getProviderConnection();
             fail("Should not be able to get connection from closed.");
         } catch (JMSRuntimeException jmsre) {}
     }
@@ -509,7 +509,7 @@ public class JmsPoolJMSContextTest extends JmsPoolTestSupport {
         JmsPoolJMSContext context2 = (JmsPoolJMSContext) context1.createContext(Session.AUTO_ACKNOWLEDGE);
 
         assertEquals(1, cf.getNumConnections());
-        assertSame(context1.getConnection(), context2.getConnection());
+        assertSame(context1.getProviderConnection(), context2.getProviderConnection());
     }
 
     @Test
@@ -518,7 +518,7 @@ public class JmsPoolJMSContextTest extends JmsPoolTestSupport {
         JmsPoolJMSContext context2 = (JmsPoolJMSContext) context1.createContext(Session.AUTO_ACKNOWLEDGE);
 
         assertEquals(1, cf.getNumConnections());
-        assertSame(context1.getConnection(), context2.getConnection());
+        assertSame(context1.getProviderConnection(), context2.getProviderConnection());
 
         context1.close();
 
@@ -672,7 +672,7 @@ public class JmsPoolJMSContextTest extends JmsPoolTestSupport {
         JmsPoolJMSContext context = (JmsPoolJMSContext) cf.createContext();
         assertNotNull(context.createConsumer(context.createQueue(getTestName())));
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         assertTrue(connection.isStarted());
     }
 
@@ -681,7 +681,7 @@ public class JmsPoolJMSContextTest extends JmsPoolTestSupport {
         JmsPoolJMSContext context = (JmsPoolJMSContext) cf.createContext();
         context.setAutoStart(false);
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         assertFalse(connection.isStarted());
 
         assertNotNull(context.createConsumer(context.createQueue(getTestName())));
@@ -696,7 +696,7 @@ public class JmsPoolJMSContextTest extends JmsPoolTestSupport {
         context.setAutoStart(false);
         assertNotNull(context.createConsumer(context.createQueue(getTestName())));
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         assertFalse(connection.isStarted());
 
         context.start();

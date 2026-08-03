@@ -14,46 +14,74 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.messaginghub.pooled.jms.pool;
+package org.messaginghub.pooled.jms;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.transaction.xa.XAResource;
 
-import org.messaginghub.pooled.jms.JmsPoolSession;
+import org.messaginghub.pooled.jms.internal.JmsPoolXAConnectionProxy;
+import org.messaginghub.pooled.jms.internal.JmsPoolXASessionProxy;
 
-import jakarta.jms.Connection;
 import jakarta.jms.JMSException;
 import jakarta.jms.Session;
 import jakarta.jms.XAConnection;
+import jakarta.jms.XAQueueConnection;
+import jakarta.jms.XAQueueSession;
+import jakarta.jms.XASession;
+import jakarta.jms.XATopicConnection;
+import jakarta.jms.XATopicSession;
 import jakarta.transaction.RollbackException;
 import jakarta.transaction.Status;
 import jakarta.transaction.SystemException;
+import jakarta.transaction.Transaction;
 import jakarta.transaction.TransactionManager;
 
 /**
- * An XA-aware connection pool. When a session is created and an xa transaction
- * is active, the session will automatically be enlisted in the current
- * transaction.
+ * {@link XAConnection} pooled connection wrapper for shared connections from the pool.
  */
-public class PooledXAConnection extends PooledConnection {
+public class JmsPoolXAConnection extends JmsPoolConnection implements XAConnection, XATopicConnection, XAQueueConnection, AutoCloseable {
 
     private final TransactionManager transactionManager;
 
-    public PooledXAConnection(Connection connection, TransactionManager transactionManager) {
+    JmsPoolXAConnection(JmsPoolXAConnectionProxy connection, TransactionManager transactionManager) {
         super(connection);
+
         this.transactionManager = transactionManager;
     }
 
     @Override
-    protected Session makeSession(PooledSessionKey key) throws JMSException {
-        return ((XAConnection) connection).createXASession();
+    public XAQueueSession createXAQueueSession() throws JMSException {
+        return (XAQueueSession) createSession(false, Session.AUTO_ACKNOWLEDGE);
     }
 
     @Override
-    public Session createSession(boolean transacted, int ackMode) throws JMSException {
+    public XATopicSession createXATopicSession() throws JMSException {
+        return (XATopicSession) createSession(false, Session.AUTO_ACKNOWLEDGE);
+    }
+
+    @Override
+    public XASession createXASession() throws JMSException {
+        return createSession(false, Session.AUTO_ACKNOWLEDGE);
+    }
+
+    /**
+     * Provides access to the wrapped JMS {@link XAConnection} and is meant primarily as a
+     * test point and the application logic should not depend on this method.
+     *
+     * @return the wrapped JMS {@link XAConnection}.
+     *
+     * @throws JMSException if an error occurs while accessing the wrapped resource.
+     */
+    @Override
+    XAConnection getProviderConnection() throws JMSException {
+        return (XAConnection) super.getProviderConnection();
+    }
+
+    @Override
+    public XASession createSession(boolean transacted, int ackMode) throws JMSException {
         try {
-            boolean isXa = (transactionManager != null && transactionManager.getStatus() != Status.STATUS_NO_TRANSACTION);
+            final boolean isXa = (transactionManager != null && transactionManager.getStatus() != Status.STATUS_NO_TRANSACTION);
 
             if (isXa) {
                 // if the xa tx aborts inflight we don't want to auto create a
@@ -68,20 +96,23 @@ public class PooledXAConnection extends PooledConnection {
                 }
             }
 
-            final JmsPoolSession session = (JmsPoolSession) super.createSession(transacted, ackMode);
-
-            session.setIgnoreClose(isXa);
-            session.setIsXa(isXa);
+            final JmsPoolXASessionProxy proxy = safeGetConnection().createSession(transacted, ackMode);
+            final JmsPoolXASession session = afterSessionCreated(new JmsPoolXASession(proxy, transacted, isXa));
 
             if (isXa) {
-                incrementReferenceCount();
+                // Register a new reference on the active connection such that even if it this connection
+                // is closed by the user the underlying connection remains active until the synchronization
+                // indicates the transaction is complete regardless of its outcome.
+                safeGetConnection().acquire();
 
                 final JmsPooledXASessionSynchronization sync = new JmsPooledXASessionSynchronization(session);
 
                 try {
-                    transactionManager.getTransaction().registerSynchronization(sync);
+                    final Transaction txn = transactionManager.getTransaction();
 
-                    if (!transactionManager.getTransaction().enlistResource(createXaResource(session))) {
+                    txn.registerSynchronization(sync);
+
+                    if (!txn.enlistResource(createXaResource(session))) {
                         throw new JMSException("Enlistment of Pooled Session into transaction failed");
                     }
                 } catch (Exception ex) {
@@ -102,7 +133,17 @@ public class PooledXAConnection extends PooledConnection {
         }
     }
 
-    protected XAResource createXaResource(JmsPoolSession session) throws JMSException {
+    @Override
+    protected JmsPoolXAConnectionProxy safeGetConnection() throws JMSException {
+        return (JmsPoolXAConnectionProxy) super.safeGetConnection();
+    }
+
+    @Override
+    protected JmsPoolXASession afterSessionCreated(JmsPoolSession session) throws JMSException {
+        return (JmsPoolXASession) super.afterSessionCreated(session);
+    }
+
+    protected XAResource createXaResource(JmsPoolXASession session) throws JMSException {
         return session.getXAResource();
     }
 
@@ -110,9 +151,9 @@ public class PooledXAConnection extends PooledConnection {
 
         private final AtomicBoolean closed = new AtomicBoolean();
 
-        private JmsPoolSession session;
+        private JmsPoolXASession session;
 
-        private JmsPooledXASessionSynchronization(JmsPoolSession session) {
+        private JmsPooledXASessionSynchronization(JmsPoolXASession session) {
             this.session = session;
         }
 
@@ -123,20 +164,18 @@ public class PooledXAConnection extends PooledConnection {
                     session.internalClose(true);
                 } finally {
                     session = null;
-                    decrementReferenceCount();
+                    safeGetConnection().close();
                 }
             }
         }
 
         public void close() throws JMSException {
             if (closed.compareAndSet(false, true)) {
-                // This will return session to the pool.
-                session.setIgnoreClose(false);
                 try {
-                    session.close();
+                    session.internalClose(false);
                 } finally {
                     session = null;
-                    decrementReferenceCount();
+                    safeGetConnection().close();
                 }
             }
         }

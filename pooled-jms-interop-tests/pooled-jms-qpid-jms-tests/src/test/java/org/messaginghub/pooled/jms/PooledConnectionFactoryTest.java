@@ -18,18 +18,19 @@ package org.messaginghub.pooled.jms;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import jakarta.jms.Connection;
-import jakarta.jms.QueueConnectionFactory;
-import jakarta.jms.TopicConnectionFactory;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.Connection;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.TopicConnectionFactory;
 
 /**
  * Checks the behavior of the PooledConnectionFactory when the maximum amount of
@@ -62,9 +63,9 @@ public class PooledConnectionFactoryTest extends QpidJmsPoolTestSupport {
         JmsPoolConnection conn2 = (JmsPoolConnection) cf.createConnection();
         JmsPoolConnection conn3 = (JmsPoolConnection) cf.createConnection();
 
-        assertNotSame(conn1.getConnection(), conn2.getConnection());
-        assertNotSame(conn1.getConnection(), conn3.getConnection());
-        assertNotSame(conn2.getConnection(), conn3.getConnection());
+        assertNotSame(conn1.getProviderConnection(), conn2.getProviderConnection());
+        assertNotSame(conn1.getProviderConnection(), conn3.getProviderConnection());
+        assertNotSame(conn2.getProviderConnection(), conn3.getProviderConnection());
 
         assertEquals(3, cf.getNumConnections());
 
@@ -76,9 +77,9 @@ public class PooledConnectionFactoryTest extends QpidJmsPoolTestSupport {
         conn2 = (JmsPoolConnection) cf.createConnection();
         conn3 = (JmsPoolConnection) cf.createConnection();
 
-        assertNotSame(conn1.getConnection(), conn2.getConnection());
-        assertNotSame(conn1.getConnection(), conn3.getConnection());
-        assertNotSame(conn2.getConnection(), conn3.getConnection());
+        assertNotSame(conn1.getProviderConnection(), conn2.getProviderConnection());
+        assertNotSame(conn1.getProviderConnection(), conn3.getProviderConnection());
+        assertNotSame(conn2.getProviderConnection(), conn3.getProviderConnection());
 
         cf.stop();
     }
@@ -92,9 +93,9 @@ public class PooledConnectionFactoryTest extends QpidJmsPoolTestSupport {
         JmsPoolConnection conn2 = (JmsPoolConnection) cf.createConnection();
         JmsPoolConnection conn3 = (JmsPoolConnection) cf.createConnection();
 
-        assertNotSame(conn1.getConnection(), conn2.getConnection());
-        assertNotSame(conn1.getConnection(), conn3.getConnection());
-        assertNotSame(conn2.getConnection(), conn3.getConnection());
+        assertNotSame(conn1.getProviderConnection(), conn2.getProviderConnection());
+        assertNotSame(conn1.getProviderConnection(), conn3.getProviderConnection());
+        assertNotSame(conn2.getProviderConnection(), conn3.getProviderConnection());
 
         assertEquals(3, cf.getNumConnections());
 
@@ -110,13 +111,13 @@ public class PooledConnectionFactoryTest extends QpidJmsPoolTestSupport {
 
         cf.stop();
 
-        assertNull(cf.createConnection());
+        assertThrows(IllegalStateException.class, () -> cf.createConnection());
 
         cf.start();
 
         JmsPoolConnection conn2 = (JmsPoolConnection) cf.createConnection();
 
-        assertNotSame(conn1.getConnection(), conn2.getConnection());
+        assertNotSame(conn1.getProviderConnection(), conn2.getProviderConnection());
 
         assertEquals(1, cf.getNumConnections());
 
@@ -136,7 +137,7 @@ public class PooledConnectionFactoryTest extends QpidJmsPoolTestSupport {
         }
 
         for (int i = 0; i < 100; ++i) {
-            Connection current = ((JmsPoolConnection) cf.createConnection()).getConnection();
+            Connection current = ((JmsPoolConnection) cf.createConnection()).getProviderConnection();
             assertNotSame(previous, current);
             previous = current;
         }
@@ -153,9 +154,9 @@ public class PooledConnectionFactoryTest extends QpidJmsPoolTestSupport {
         JmsPoolConnection conn2 = (JmsPoolConnection) cf.createConnection();
         JmsPoolConnection conn3 = (JmsPoolConnection) cf.createConnection();
 
-        assertSame(conn1.getConnection(), conn2.getConnection());
-        assertSame(conn1.getConnection(), conn3.getConnection());
-        assertSame(conn2.getConnection(), conn3.getConnection());
+        assertSame(conn1.getProviderConnection(), conn2.getProviderConnection());
+        assertSame(conn1.getProviderConnection(), conn3.getProviderConnection());
+        assertSame(conn2.getProviderConnection(), conn3.getProviderConnection());
 
         assertEquals(1, cf.getNumConnections());
 

@@ -16,26 +16,51 @@
  */
 package org.messaginghub.pooled.jms;
 
-import jakarta.jms.Connection;
+import org.messaginghub.pooled.jms.internal.JmsPoolConnectionProxy;
+import org.messaginghub.pooled.jms.internal.JmsPoolXAConnectionProxy;
 
-import org.messaginghub.pooled.jms.pool.PooledJCAConnection;
+import jakarta.jms.ConnectionFactory;
 
+/**
+ * A Custom pooled JCA {@link ConnectionFactory} instance.
+ */
 public class JmsPoolJcaConnectionFactory extends JmsPoolXAConnectionFactory {
 
     private static final long serialVersionUID = -2470093537159318333L;
 
+    /**
+     * Assigned name for JCA factory
+     */
     private String name;
 
+    /**
+     * Creates the pooling connection factory in the started state but the application must configure
+     * a backing {@link ConnectionFactory} before using any method in this object.
+     */
+    public JmsPoolJcaConnectionFactory() {
+        super();
+    }
+
+    /**
+     * Gets the name that was configured for this JCA {@link ConnectionFactory}
+     *
+     * @return the name assigned to this JCA ConnectionFactory
+     */
     public String getName() {
         return name;
     }
 
+    /**
+     * Sets the name assigned to this JCA ConnectionFactory
+     *
+     * @param name The assigned name for this JCA {@link ConnectionFactory}.
+     */
     public void setName(String name) {
         this.name = name;
     }
 
     @Override
-    protected PooledJCAConnection createPooledConnection(Connection connection) {
-        return new PooledJCAConnection(connection, getTransactionManager(), getName());
+    protected JmsPoolXAConnection newPooledConnectionWrapper(JmsPoolConnectionProxy connection) {
+        return new JmsPoolJcaConnection((JmsPoolXAConnectionProxy) connection, getTransactionManager(), getName());
     }
 }

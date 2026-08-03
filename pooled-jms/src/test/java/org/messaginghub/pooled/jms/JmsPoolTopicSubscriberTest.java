@@ -21,16 +21,16 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.messaginghub.pooled.jms.mock.MockJMSMessageConsumer;
+
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
 import jakarta.jms.Session;
 import jakarta.jms.Topic;
 import jakarta.jms.TopicSession;
 import jakarta.jms.TopicSubscriber;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import org.messaginghub.pooled.jms.mock.MockJMSTopicSubscriber;
 
 /**
  * Tests for the pool JMS TopicSubscriber wrapper.
@@ -90,13 +90,13 @@ public class JmsPoolTopicSubscriberTest extends JmsPoolTestSupport {
         Topic topic = session.createTemporaryTopic();
         JmsPoolTopicSubscriber subscriber = (JmsPoolTopicSubscriber) session.createDurableSubscriber(topic, "name", "color = red", true);
 
-        assertNotNull(subscriber.getTopicSubscriber());
-        assertTrue(subscriber.getTopicSubscriber() instanceof MockJMSTopicSubscriber);
+        assertNotNull(subscriber.getProviderMessageConsumer());
+        assertTrue(subscriber.getProviderMessageConsumer() instanceof MockJMSMessageConsumer);
 
         subscriber.close();
 
         try {
-            subscriber.getTopicSubscriber();
+            subscriber.getProviderMessageConsumer();
             fail("Cannot read state on closed subscriber");
         } catch (IllegalStateException ise) {}
     }

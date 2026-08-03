@@ -33,6 +33,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.messaginghub.pooled.jms.mock.MockJMSConnection;
+import org.messaginghub.pooled.jms.mock.MockJMSConnectionFactory;
+import org.messaginghub.pooled.jms.util.Wait;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import jakarta.jms.Connection;
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.IllegalStateRuntimeException;
@@ -41,14 +49,6 @@ import jakarta.jms.QueueConnection;
 import jakarta.jms.QueueConnectionFactory;
 import jakarta.jms.TopicConnection;
 import jakarta.jms.TopicConnectionFactory;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import org.messaginghub.pooled.jms.mock.MockJMSConnection;
-import org.messaginghub.pooled.jms.mock.MockJMSConnectionFactory;
-import org.messaginghub.pooled.jms.util.Wait;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Performs basic tests on the JmsPoolConnectionFactory implementation.
@@ -178,9 +178,9 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         JmsPoolConnection conn2 = (JmsPoolConnection) cf.createConnection();
         JmsPoolConnection conn3 = (JmsPoolConnection) cf.createConnection();
 
-        assertNotSame(conn1.getConnection(), conn2.getConnection());
-        assertNotSame(conn1.getConnection(), conn3.getConnection());
-        assertNotSame(conn2.getConnection(), conn3.getConnection());
+        assertNotSame(conn1.getProviderConnection(), conn2.getProviderConnection());
+        assertNotSame(conn1.getProviderConnection(), conn3.getProviderConnection());
+        assertNotSame(conn2.getProviderConnection(), conn3.getProviderConnection());
 
         assertEquals(3, cf.getNumConnections());
 
@@ -192,9 +192,9 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         conn2 = (JmsPoolConnection) cf.createConnection();
         conn3 = (JmsPoolConnection) cf.createConnection();
 
-        assertNotSame(conn1.getConnection(), conn2.getConnection());
-        assertNotSame(conn1.getConnection(), conn3.getConnection());
-        assertNotSame(conn2.getConnection(), conn3.getConnection());
+        assertNotSame(conn1.getProviderConnection(), conn2.getProviderConnection());
+        assertNotSame(conn1.getProviderConnection(), conn3.getProviderConnection());
+        assertNotSame(conn2.getProviderConnection(), conn3.getProviderConnection());
 
         cf.stop();
     }
@@ -210,9 +210,9 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         JmsPoolConnection conn2 = (JmsPoolConnection) cf.createConnection();
         JmsPoolConnection conn3 = (JmsPoolConnection) cf.createConnection();
 
-        assertNotSame(conn1.getConnection(), conn2.getConnection());
-        assertNotSame(conn1.getConnection(), conn3.getConnection());
-        assertNotSame(conn2.getConnection(), conn3.getConnection());
+        assertNotSame(conn1.getProviderConnection(), conn2.getProviderConnection());
+        assertNotSame(conn1.getProviderConnection(), conn3.getProviderConnection());
+        assertNotSame(conn2.getProviderConnection(), conn3.getProviderConnection());
 
         assertEquals(3, cf.getNumConnections());
 
@@ -238,9 +238,9 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         JmsPoolConnection conn2 = (JmsPoolConnection) cf.createConnection();
         JmsPoolConnection conn3 = (JmsPoolConnection) cf.createConnection();
 
-        assertNotSame(conn1.getConnection(), conn2.getConnection());
-        assertNotSame(conn1.getConnection(), conn3.getConnection());
-        assertNotSame(conn2.getConnection(), conn3.getConnection());
+        assertNotSame(conn1.getProviderConnection(), conn2.getProviderConnection());
+        assertNotSame(conn1.getProviderConnection(), conn3.getProviderConnection());
+        assertNotSame(conn2.getProviderConnection(), conn3.getProviderConnection());
 
         assertEquals(3, cf.getNumConnections());
 
@@ -256,11 +256,36 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         cf.stop();
 
         assertEquals(0, cf.getNumConnections());
-        assertNull(cf.createConnection());
+        assertThrows(IllegalStateException.class, () -> cf.createConnection());
         assertEquals(0, cf.getNumConnections());
 
         cf.start();
 
+        assertNotNull(cf.createConnection());
+        assertEquals(1, cf.getNumConnections());
+
+        cf.stop();
+    }
+
+    @Test
+    public void testStoppedConnectionFactoryRetainsPreviousConfiguration() throws Exception {
+        MockJMSConnectionFactory mock = new MockJMSConnectionFactory();
+        cf = new JmsPoolConnectionFactory();
+        cf.setConnectionFactory(mock);
+        cf.setMaxConnections(100);
+        cf.setConnectionCheckInterval(1000);
+        cf.stop();
+
+        assertEquals(100, cf.getMaxConnections());
+        assertEquals(1000, cf.getConnectionCheckInterval());
+        assertEquals(0, cf.getNumConnections());
+        assertThrows(IllegalStateException.class, () -> cf.createConnection());
+        assertEquals(0, cf.getNumConnections());
+
+        cf.start();
+
+        assertEquals(100, cf.getMaxConnections());
+        assertEquals(1000, cf.getConnectionCheckInterval());
         assertNotNull(cf.createConnection());
         assertEquals(1, cf.getNumConnections());
 
@@ -276,7 +301,7 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         cf.stop();
 
         assertEquals(0, cf.getNumConnections());
-        assertNull(cf.createContext());
+        assertThrows(IllegalStateRuntimeException.class, () -> cf.createContext());
         assertEquals(0, cf.getNumConnections());
 
         cf.start();
@@ -295,16 +320,18 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         cf.setMaxConnections(1);
 
         JmsPoolConnection conn1 = (JmsPoolConnection) cf.createConnection();
+        Connection providerConnection1 = conn1.getProviderConnection();
 
         cf.stop();
 
-        assertNull(cf.createConnection());
+        assertThrows(IllegalStateException.class, () -> cf.createConnection());
 
         cf.start();
 
         JmsPoolConnection conn2 = (JmsPoolConnection) cf.createConnection();
+        Connection providerConnection2 = conn2.getProviderConnection();
 
-        assertNotSame(conn1.getConnection(), conn2.getConnection());
+        assertNotSame(providerConnection1, providerConnection2);
 
         assertEquals(1, cf.getNumConnections());
 
@@ -326,8 +353,8 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         }
 
         for (int i = 0; i < 100; ++i) {
-            Connection current = ((JmsPoolConnection) cf.createConnection()).getConnection();
-            assertNotSame(previous, current);
+            Connection current = ((JmsPoolConnection) cf.createConnection()).getProviderConnection();
+            assertNotSame(previous, current, "Did not get differing connection on iteration: " + i);
             previous = current;
         }
 
@@ -345,9 +372,9 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         JmsPoolConnection conn2 = (JmsPoolConnection) cf.createConnection();
         JmsPoolConnection conn3 = (JmsPoolConnection) cf.createConnection();
 
-        assertSame(conn1.getConnection(), conn2.getConnection());
-        assertSame(conn1.getConnection(), conn3.getConnection());
-        assertSame(conn2.getConnection(), conn3.getConnection());
+        assertSame(conn1.getProviderConnection(), conn2.getProviderConnection());
+        assertSame(conn1.getProviderConnection(), conn3.getProviderConnection());
+        assertSame(conn2.getProviderConnection(), conn3.getProviderConnection());
 
         assertEquals(1, cf.getNumConnections());
 
@@ -392,7 +419,7 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
 
         for (JmsPoolConnection connection : connections) {
-            assertSame(primary.getConnection(), connection.getConnection());
+            assertSame(primary.getProviderConnection(), connection.getProviderConnection());
         }
 
         connections.clear();
@@ -428,7 +455,7 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
                 public void run() {
                     try {
                         JmsPoolConnection pooled = (JmsPoolConnection) cf.createConnection();
-                        MockJMSConnection wrapped = (MockJMSConnection) pooled.getConnection();
+                        MockJMSConnection wrapped = (MockJMSConnection) pooled.getProviderConnection();
                         connections.put(wrapped.getConnectionId(), pooled);
                     } catch (JMSException e) {
                     }
@@ -472,7 +499,7 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         @Override
         public void setConnectionFactory(Object factory) {
             // Simulate bad Pooled factory subclass to ensure we validate what it gave us.
-            this.connectionFactory = factory;
+            // TODO: now invalid
         }
     }
 }

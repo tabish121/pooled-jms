@@ -21,8 +21,8 @@ import java.lang.invoke.MethodHandles;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
+import org.messaginghub.pooled.jms.internal.JmsPoolAbstractConnectionProxyFactory;
 import org.messaginghub.pooled.jms.internal.JmsPoolConnectionProxy;
-import org.messaginghub.pooled.jms.internal.JmsPoolConnectionProxyFactory;
 import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,17 +69,18 @@ import jakarta.jms.TopicConnectionFactory;
  * pool. This is performed by a "connection check" thread, which runs asynchronously. Caution should
  * be used when configuring this optional feature. Connection check runs contend with client threads for
  * access to resources in the pool, so if they run too frequently performance issues may result. The
- * connection check thread may be configured using the {@link JmsPoolConnectionFactory#setConnectionCheckInterval(long)}
+ * connection check thread may be configured using the {@link JmsPoolAbstractConnectionFactory#setConnectionCheckInterval(long)}
  * method. By default the value is -1 which means no connection check thread will be run. Set to a
  * non-negative value to configure the connection check thread to run, the implementation may enforce
  * a minimum time between eviction checks.
  */
-public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnectionFactory, TopicConnectionFactory {
+public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstractConnectionProxyFactory<?, ?>> implements ConnectionFactory, QueueConnectionFactory, TopicConnectionFactory {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private static final AtomicIntegerFieldUpdater<JmsPoolConnectionFactory> STOPPED_UPDATER =
-        AtomicIntegerFieldUpdater.newUpdater(JmsPoolConnectionFactory.class, "stopped");
+    @SuppressWarnings("rawtypes")
+    private static final AtomicIntegerFieldUpdater<JmsPoolAbstractConnectionFactory> STOPPED_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(JmsPoolAbstractConnectionFactory.class, "stopped");
 
     /**
      * The default value controlling time between checks for idle connections in the pool.
@@ -101,42 +102,17 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     private volatile int stopped;
 
     /**
-     * Factory that creates the pooled JMS connections wrapped in a proxy that tracks references.
-     */
-    protected final JmsPoolConnectionProxyFactory connectionProxyFactory = new JmsPoolConnectionProxyFactory();
-
-    /**
      * Creates the pooling connection factory in the started state but the application must configure
      * a backing {@link ConnectionFactory} before using any method in this object.
      */
-    public JmsPoolConnectionFactory() {}
+    public JmsPoolAbstractConnectionFactory() {}
 
     /**
      * Gets the configured {@link ConnectionFactory} that is used when new {@link Connection} instance are added to the pool.
      *
      * @return the currently configured ConnectionFactory used to create the pooled Connections.
      */
-    public Object getConnectionFactory() {
-        return connectionProxyFactory.getConnectionFactory();
-    }
-
-    /**
-     * Sets the ConnectionFactory used to create new pooled Connections.
-     * <p>
-     * Updates to this value do not affect Connections that were previously created and placed
-     * into the pool. In order to allocate new Connections based off this new ConnectionFactory
-     * it is first necessary to {@link #clear} the pooled Connections.
-     *
-     * @param factory
-     *      The factory to use to create pooled Connections (cannot be null).
-     */
-    public void setConnectionFactory(final Object factory) {
-        if (factory instanceof ConnectionFactory cf) {
-            connectionProxyFactory.setConnectionFactory(cf);
-        } else {
-            throw new IllegalArgumentException("connectionFactory should implement jakarta.jms.ConnectionFactory");
-        }
-    }
+    protected abstract E getConnectionFactoryProxy();
 
     //----- JMS Connection Creation ---------------------------------------------//
 
@@ -195,10 +171,10 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
         }
 
         if (isUseProviderJMSContext()) {
-            return createProviderContext(username, password, sessionMode);
+            return createProviderJmsContext(username, password, sessionMode);
         } else {
             try {
-                return newPooledConnectionContext(newJmsPoolConnection(username, password), sessionMode);
+                return newJmsPoolContext(username, password, sessionMode);
             } catch (JMSException e) {
                 throw JMSExceptionSupport.createRuntimeException(e);
             }
@@ -218,7 +194,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     public synchronized void start() {
         if (STOPPED_UPDATER.weakCompareAndSet(this, 1, 0)) {
             LOG.debug("JMS pooled connection factory start method called, no action performed.");
-            connectionProxyFactory.start();
+            getConnectionFactoryProxy().start();
         }
     }
 
@@ -231,6 +207,8 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      */
     public synchronized void stop() {
         if (STOPPED_UPDATER.weakCompareAndSet(this, 0, 1)) {
+            final JmsPoolAbstractConnectionProxyFactory<?, ?> connectionProxyFactory = getConnectionFactoryProxy();
+
             LOG.debug("Stopping the pooled connection factory, number of connections in pool = {}",
                       connectionProxyFactory != null ? connectionProxyFactory.getNumConnections() : 0);
             try {
@@ -260,7 +238,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      */
     public synchronized void clear() {
         if (!isStopped()) {
-            connectionProxyFactory.clear();
+            getConnectionFactoryProxy().clear();
         }
     }
 
@@ -273,7 +251,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
         if (isStopped()) {
             return 0;
         } else {
-            return connectionProxyFactory.getNumConnections();
+            return getConnectionFactoryProxy().getNumConnections();
         }
     }
 
@@ -289,7 +267,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see setMaxIdleSessionsPerConnection
      */
     public int getMaxIdleSessionsPerConnection() {
-        return connectionProxyFactory.getMaxIdleSessionsPerConnection();
+        return getConnectionFactoryProxy().getMaxIdleSessionsPerConnection();
     }
 
     /**
@@ -317,7 +295,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see setMaxSessionsPerConnection
      */
     public void setMaxIdleSessionsPerConnection(int maxIdleSessionsPerConnection) {
-        connectionProxyFactory.setMaxIdleSessionsPerConnection(maxIdleSessionsPerConnection);
+        getConnectionFactoryProxy().setMaxIdleSessionsPerConnection(maxIdleSessionsPerConnection);
     }
 
     /**
@@ -331,7 +309,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see setMaxIdleSessionsPerConnection
      */
     public int getMaxSessionsPerConnection() {
-        return connectionProxyFactory.getMaxSessionsPerConnection();
+        return getConnectionFactoryProxy().getMaxSessionsPerConnection();
     }
 
     /**
@@ -351,7 +329,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *      The maximum number of pooled sessions per connection in the pool.
      */
     public void setMaxSessionsPerConnection(int maxSessionsPerConnection) {
-        connectionProxyFactory.setMaxSessionsPerConnection(maxSessionsPerConnection);
+        getConnectionFactoryProxy().setMaxSessionsPerConnection(maxSessionsPerConnection);
     }
 
     /**
@@ -363,7 +341,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see #setBlockIfSessionPoolIsFull(boolean)
      */
     public boolean isBlockIfSessionPoolIsFull() {
-        return connectionProxyFactory.isBlockIfSessionPoolIsFull();
+        return getConnectionFactoryProxy().isBlockIfSessionPoolIsFull();
     }
 
     /**
@@ -380,7 +358,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *      until a session is available.  defaults to true.
      */
     public void setBlockIfSessionPoolIsFull(boolean block) {
-        connectionProxyFactory.setBlockIfSessionPoolIsFull(block);
+        getConnectionFactoryProxy().setBlockIfSessionPoolIsFull(block);
     }
 
     /**
@@ -390,7 +368,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return the connection idle timeout value in (milliseconds).
      */
     public int getConnectionIdleTimeout() {
-        return connectionProxyFactory.getConnectionIdleTimeout();
+        return getConnectionFactoryProxy().getConnectionIdleTimeout();
     }
 
     /**
@@ -417,7 +395,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see #setConnectionCheckInterval(long)
      */
     public void setConnectionIdleTimeout(int connectionIdleTimeout) {
-        connectionProxyFactory.setConnectionIdleTimeout(connectionIdleTimeout);
+        getConnectionFactoryProxy().setConnectionIdleTimeout(connectionIdleTimeout);
     }
 
     /**
@@ -432,7 +410,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return true if a pooled Session will use only a single anonymous message producer instance.
      */
     public boolean isUseAnonymousProducers() {
-        return connectionProxyFactory.isUseAnonymousProducers();
+        return getConnectionFactoryProxy().isUseAnonymousProducers();
     }
 
     /**
@@ -443,7 +421,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *      Boolean value that configures whether anonymous producers are used.
      */
     public void setUseAnonymousProducers(boolean anonymousProducers) {
-        connectionProxyFactory.setUseAnonymousProducers(anonymousProducers);
+        getConnectionFactoryProxy().setUseAnonymousProducers(anonymousProducers);
     }
 
     /**
@@ -453,7 +431,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return the current explicit producer cache size.
      */
     public int getExplicitProducerCacheSize() {
-        return connectionProxyFactory.getExplicitProducerCacheSize();
+        return getConnectionFactoryProxy().getExplicitProducerCacheSize();
     }
 
     /**
@@ -474,7 +452,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * 		The number of explicit producers to cache in the pooled Session
      */
     public void setExplicitProducerCacheSize(int cacheSize) {
-        connectionProxyFactory.setExplicitProducerCacheSize(cacheSize);
+        getConnectionFactoryProxy().setExplicitProducerCacheSize(cacheSize);
     }
 
     /**
@@ -485,7 +463,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see #setBlockIfSessionPoolIsFull(boolean)
      */
     public long getBlockIfSessionPoolIsFullTimeout() {
-        return connectionProxyFactory.getBlockIfSessionPoolIsFullTimeout();
+        return getConnectionFactoryProxy().getBlockIfSessionPoolIsFullTimeout();
     }
 
     /**
@@ -507,7 +485,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see #setMaxSessionsPerConnection(int)
      */
     public void setBlockIfSessionPoolIsFullTimeout(long blockIfSessionPoolIsFullTimeout) {
-        connectionProxyFactory.setBlockIfSessionPoolIsFullTimeout(blockIfSessionPoolIsFullTimeout);
+        getConnectionFactoryProxy().setBlockIfSessionPoolIsFullTimeout(blockIfSessionPoolIsFullTimeout);
     }
 
     /**
@@ -516,7 +494,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return if the pool is configured to assume connections are fault tolerant.
      */
     public boolean isFaultTolerantConnections() {
-        return connectionProxyFactory.isFaultTolerantConnections();
+        return getConnectionFactoryProxy().isFaultTolerantConnections();
     }
 
     /**
@@ -539,7 +517,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * 		Boolean value indicating if the pool should assume connection are fault tolerant.
      */
     public void setFaultTolerantConnections(boolean faultTolerantConnections) {
-        connectionProxyFactory.setFaultTolerantConnections(faultTolerantConnections);
+        getConnectionFactoryProxy().setFaultTolerantConnections(faultTolerantConnections);
     }
 
     //----- Connection Factory Configuration -------------------------------------------//
@@ -551,7 +529,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return the maxConnections that will be created for this pool.
      */
     public int getMaxConnections() {
-        return connectionProxyFactory.getMaxConnections();
+        return getConnectionFactoryProxy().getMaxConnections();
     }
 
     /**
@@ -564,7 +542,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * 		the maximum Connections to pool for a given user / password combination.
      */
     public void setMaxConnections(int maxConnections) {
-        connectionProxyFactory.setMaxConnections(maxConnections);
+        getConnectionFactoryProxy().setMaxConnections(maxConnections);
     }
 
     /**
@@ -573,7 +551,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @return the number of milliseconds to sleep between runs of the connection check thread.
      */
     public long getConnectionCheckInterval() {
-        return connectionProxyFactory.getConnectionCheckInterval();
+        return getConnectionFactoryProxy().getConnectionCheckInterval();
     }
 
     /**
@@ -590,7 +568,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @see #setConnectionIdleTimeout(int)
      */
     public void setConnectionCheckInterval(long connectionCheckInterval) {
-        connectionProxyFactory.setConnectionCheckInterval(connectionCheckInterval);
+        getConnectionFactoryProxy().setConnectionCheckInterval(connectionCheckInterval);
     }
 
     /**
@@ -604,7 +582,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
     }
 
     /**
-     * Controls the behavior of the {@link JmsPoolConnectionFactory#createContext} methods.
+     * Controls the behavior of the {@link JmsPoolAbstractConnectionFactory#createContext} methods.
      * <p>
      * By default this value is set to false and the JMS Pool will use n pooled version of
      * a JMSContext to wrap Connections from the pool.  These pooled JMSContext objects have certain
@@ -621,10 +599,6 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
 
     //----- Internal implementation ------------------------------------------//
 
-    protected JmsPoolConnection newJmsPoolConnection(String username, String password) throws JMSException {
-        return newPooledConnectionWrapper(connectionProxyFactory.createConnection(username, password));
-    }
-
     /**
      * Allows subclasses to create an appropriate JmsPoolConnection wrapper for the newly
      * create connection such as one that provides support for XA Transactions.
@@ -632,26 +606,28 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      * @param connection
      * 		The {@link JmsPoolConnection} to wrap.
      *
-     * @return a new {@link JmsPoolConnection} that wraps the given {@link JmsPoolConnectionProxy}
+     * @return a new {@link JmsPoolConnection} that wraps a given {@link JmsPoolConnectionProxy}
+     *
+     * @throws JMSException if an error occurs while creating the new {@link Connection} instance.
      */
-    protected JmsPoolConnection newPooledConnectionWrapper(JmsPoolConnectionProxy connection) {
-        return new JmsPoolConnection(connection);
-    }
+    protected abstract JmsPoolConnection newJmsPoolConnection(String username, String password) throws JMSException;
 
     /**
      * Allows subclasses to create an appropriate JmsPoolJMSContext wrapper for the newly
      * create JMSContext such as one that provides support for XA Transactions.
      *
-     * @param connection
-     * 		The {@link JmsPoolConnection} to use in the JMSContext wrapper.
+     * @param username
+     * 		The user name to use when creating the connection.
+     * @param password
+     * 		The password to use when creating the connection.
      * @param sessionMode
      * 		The JMS Session acknowledgement mode to use in the {@link JMSContext}
      *
-     * @return a new {@link JmsPoolJMSContext} that wraps the given {@link JmsPoolConnection}
+     * @return a new {@link JmsPoolJMSContext} that wraps a given {@link JmsPoolConnection}
+     *
+     * @throws JMSException if an error occurs while creating the new {@link JMSContext} instance.
      */
-    protected JmsPoolJMSContext newPooledConnectionContext(JmsPoolConnection connection, int sessionMode) {
-        return new JmsPoolJMSContext(connection, sessionMode);
-    }
+    protected abstract JmsPoolJMSContext newJmsPoolContext(String username, String password, int sessionMode) throws JMSException;
 
     /**
      * Create a new {@link JMSContext} using the provided credentials and Session mode
@@ -667,19 +643,7 @@ public class JmsPoolConnectionFactory implements ConnectionFactory, QueueConnect
      *
      * @throws JMSRuntimeException if an error occurs while creating the new JMS Context.
      */
-    protected JMSContext createProviderContext(String username, String password, int sessionMode) {
-        final ConnectionFactory factory = connectionProxyFactory.getConnectionFactory();
-
-        if (factory != null) {
-            if (username == null && password == null) {
-                return factory.createContext(sessionMode);
-            } else {
-                return factory.createContext(username, password, sessionMode);
-            }
-        } else {
-            throw new IllegalStateRuntimeException("No ConnectionFactory instance assigned to the pool ConnectionFactory");
-        }
-    }
+    protected abstract JMSContext createProviderJmsContext(String username, String password, int sessionMode);
 
     //----- JNDI Operations --------------------------------------------------//
 
