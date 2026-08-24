@@ -14,37 +14,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.messaginghub.pooled.jms;
-
-import java.util.function.Consumer;
-
-import org.messaginghub.pooled.jms.internal.JmsPoolMessageConsumerProxy;
-
-import jakarta.jms.JMSException;
-import jakarta.jms.Topic;
-import jakarta.jms.TopicSubscriber;
+package org.messaginghub.pooled.jms.util;
 
 /**
- * A {@link TopicSubscriber} which was created by {@link JmsPoolSession}.
+ * A fixed non-releasable reference used for object that are intended to never be
+ * destroyed unless a critical error occurs.
  */
-public class JmsPoolTopicSubscriber extends JmsPoolMessageConsumer implements TopicSubscriber, AutoCloseable {
+public final class FixedReference implements Referenced {
 
-    JmsPoolTopicSubscriber(JmsPoolMessageConsumerProxy delegate, Consumer<JmsPoolMessageConsumer> onClose) {
-        super(delegate, onClose);
+    @Override
+    public FixedReference acquire() {
+        return this;
     }
 
     @Override
-    public Topic getTopic() throws JMSException {
-        return getDelegate().getTopic();
+    public boolean release() {
+        return false;
     }
 
     @Override
-    public boolean getNoLocal() throws JMSException {
-        return getDelegate().getNoLocal();
+    public boolean isReferenced() {
+        return true;
     }
 
     @Override
-    public String toString() {
-        return getClass().getSimpleName() + " { " + getDelegate() + " }";
+    public boolean isUnreferenced() {
+        return false;
     }
 }

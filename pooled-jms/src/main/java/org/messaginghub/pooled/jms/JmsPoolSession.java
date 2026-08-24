@@ -17,14 +17,13 @@
 package org.messaginghub.pooled.jms;
 
 import java.io.Serializable;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.lang.invoke.MethodHandles;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicReference;
 
-import javax.transaction.xa.XAResource;
-
-import org.apache.commons.pool2.KeyedObjectPool;
-import org.messaginghub.pooled.jms.pool.PooledSessionHolder;
-import org.messaginghub.pooled.jms.pool.PooledSessionKey;
+import org.messaginghub.pooled.jms.internal.JmsPoolSessionProxy;
 import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,296 +52,240 @@ import jakarta.jms.Topic;
 import jakarta.jms.TopicPublisher;
 import jakarta.jms.TopicSession;
 import jakarta.jms.TopicSubscriber;
-import jakarta.jms.XASession;
 
-public class JmsPoolSession implements Session, TopicSession, QueueSession, XASession, AutoCloseable {
+/**
+ * Session that has been taken from a pool of sessions maintained by a pooled JMS Connection.
+ * <p>
+ * The application code has full ownership of the pooled session instance until it closes its
+ * wrapper object at which time the session is returned to the connection's pool for use by a
+ * new call to create a session.
+ */
+public class JmsPoolSession implements Session, TopicSession, QueueSession, AutoCloseable {
 
-    private static final transient Logger LOG = LoggerFactory.getLogger(JmsPoolSession.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final PooledSessionKey key;
-    private final KeyedObjectPool<PooledSessionKey, PooledSessionHolder> sessionPool;
-    private final CopyOnWriteArrayList<JmsPoolMessageProducer> producers = new CopyOnWriteArrayList<>();
-    private final CopyOnWriteArrayList<JmsPoolMessageConsumer> consumers = new CopyOnWriteArrayList<>();
-    private final CopyOnWriteArrayList<JmsPoolQueueBrowser> browsers = new CopyOnWriteArrayList<>();
-    private final CopyOnWriteArrayList<JmsPoolSessionEventListener> sessionEventListeners = new CopyOnWriteArrayList<>();
-    private final AtomicBoolean closed = new AtomicBoolean();
+    private static final AtomicIntegerFieldUpdater<JmsPoolSession> CLOSED_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(JmsPoolSession.class, "closed");
 
-    private PooledSessionHolder sessionHolder;
-    private boolean transactional = true;
-    private boolean ignoreClose;
-    private boolean isXa;
+    private final Map<AutoCloseable, AutoCloseable> resources = new ConcurrentHashMap<>();
+    private final Map<JmsPoolSessionEventListener, JmsPoolSessionEventListener> sessionEventListeners = new ConcurrentHashMap<>();
+    private final JmsPoolSessionProxy session;
+    private final boolean transactional;
 
-    public JmsPoolSession(PooledSessionKey key, PooledSessionHolder sessionHolder, KeyedObjectPool<PooledSessionKey, PooledSessionHolder> sessionPool, boolean transactional) {
-        this.key = key;
-        this.sessionHolder = sessionHolder;
-        this.sessionPool = sessionPool;
+    private volatile int closed;
+
+    JmsPoolSession(JmsPoolSessionProxy session, boolean transactional) {
+        this.session = session;
         this.transactional = transactional;
     }
 
     @Override
     public void close() throws JMSException {
-        if (!ignoreClose) {
-            internalClose(false);
-        }
+        internalClose(false);
     }
 
-    public void internalClose(boolean forceInvalidate) throws JMSException {
-        if (closed.compareAndSet(false, true)) {
+    void internalClose(boolean forceInvalidate) throws JMSException {
+        if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
             final boolean invalidate = cleanupSession() || forceInvalidate;
 
             if (invalidate) {
                 // lets close the session and not put the session back into the pool
                 // instead invalidate it so the pool can create a new one on demand.
-                if (sessionHolder != null) {
-                    try {
-                        sessionHolder.close();
-                    } catch (JMSException e1) {
-                        LOG.trace("Ignoring exception on close as discarding session: " + e1, e1);
-                    }
-                }
-
                 try {
-                    sessionPool.invalidateObject(key, sessionHolder);
+                    session.destroy();
                 } catch (Exception e) {
-                    LOG.trace("Ignoring exception on invalidateObject as discarding session: " + e, e);
+                    LOG.trace("Ignoring exception on invalidateSession as discarding session: " + e.getMessage(), e);
                 }
             } else {
+                // Release the session which allows it to return to the pool of sessions
+                // for use by another caller to the connection create session APIs
                 try {
-                    sessionPool.returnObject(key, sessionHolder);
+                    session.close();
                 } catch (Exception e) {
                     jakarta.jms.IllegalStateException illegalStateException = new jakarta.jms.IllegalStateException(e.toString());
                     illegalStateException.initCause(e);
                     throw illegalStateException;
                 }
             }
-
-            sessionHolder = null;
         }
     }
 
     private boolean cleanupSession() {
-        Exception cleanupError = null;
+        final AtomicReference<Exception> cleanupError = new AtomicReference<>();
 
         try {
-            getInternalSession().setMessageListener(null);
+            session.setMessageListener(null);
         } catch (JMSException e) {
-            cleanupError = cleanupError == null ? e : cleanupError;
+            cleanupError.compareAndSet(null, e);
         }
 
-        // Close any consumers, producers and browsers that may have been created.
-        for (MessageConsumer consumer : consumers) {
+        resources.keySet().forEach(resource -> {
             try {
-                consumer.close();
-            } catch (JMSException e) {
-                LOG.trace("Caught exception trying close a consumer, will invalidate. " + e, e);
-                cleanupError = cleanupError == null ? e : cleanupError;
+                resource.close();
+            } catch (Exception e) {
+                LOG.trace("Caught exception trying close a session resource:{}, will invalidate. " + e.getMessage(), resource, e);
+                cleanupError.compareAndSet(null, e);
             }
-        }
+        });
 
-        for (QueueBrowser browser : browsers) {
+        if (isRollbackOnClose()) {
             try {
-                browser.close();
-            } catch (JMSException e) {
-                LOG.trace("Caught exception trying close a browser, will invalidate. " + e, e);
-                cleanupError = cleanupError == null ? e : cleanupError;
-            }
-        }
-
-        for (MessageProducer producer : producers) {
-            try {
-                producer.close();
-            } catch (JMSException e) {
-                LOG.trace("Caught exception trying close a producer, will invalidate. " + e, e);
-                cleanupError = cleanupError == null ? e : cleanupError;
-            }
-        }
-
-        if (transactional && !isXa) {
-            try {
-                getInternalSession().rollback();
+                session.rollback();
             } catch (JMSException e) {
                 LOG.warn("Caught exception trying rollback() when putting session back into the pool, will invalidate. " + e, e);
-                cleanupError = cleanupError == null ? e : cleanupError;
+                cleanupError.compareAndSet(null, e);
             }
         }
 
-        producers.clear();
-        consumers.clear();
-        browsers.clear();
-
-        for (JmsPoolSessionEventListener listener : this.sessionEventListeners) {
+        sessionEventListeners.keySet().forEach(listener -> {
             try {
                 listener.onSessionClosed(this);
             } catch (Exception e) {
-                cleanupError = cleanupError == null ? e : cleanupError;
+                cleanupError.compareAndSet(null, e);
             }
-        }
+        });
 
-        if (cleanupError != null) {
+        if (cleanupError.get() != null) {
             LOG.warn("Caught exception trying close() when putting session back into the pool, will invalidate. " + cleanupError, cleanupError);
         }
 
-        return cleanupError != null;
+        return cleanupError.get() != null;
     }
 
     //----- Destination factory methods --------------------------------------//
 
     @Override
     public TemporaryQueue createTemporaryQueue() throws JMSException {
-        TemporaryQueue result;
-
-        result = getInternalSession().createTemporaryQueue();
+        final TemporaryQueue result = safeGetSessionProxy().createTemporaryQueue();
 
         // Notify all of the listeners of the created temporary Queue.
-        for (JmsPoolSessionEventListener listener : this.sessionEventListeners) {
+        sessionEventListeners.keySet().forEach(listener -> {
             listener.onTemporaryQueueCreate(result);
-        }
+        });
 
         return result;
     }
 
     @Override
     public TemporaryTopic createTemporaryTopic() throws JMSException {
-        TemporaryTopic result;
-
-        result = getInternalSession().createTemporaryTopic();
+        final TemporaryTopic result = safeGetSessionProxy().createTemporaryTopic();
 
         // Notify all of the listeners of the created temporary Topic.
-        for (JmsPoolSessionEventListener listener : this.sessionEventListeners) {
+        sessionEventListeners.keySet().forEach(listener -> {
             listener.onTemporaryTopicCreate(result);
-        }
+        });
 
         return result;
     }
 
     @Override
-    public Queue createQueue(String s) throws JMSException {
-        return getInternalSession().createQueue(s);
+    public Queue createQueue(String name) throws JMSException {
+        return safeGetSessionProxy().createQueue(name);
     }
 
     @Override
-    public Topic createTopic(String s) throws JMSException {
-        return getInternalSession().createTopic(s);
+    public Topic createTopic(String name) throws JMSException {
+        return safeGetSessionProxy().createTopic(name);
     }
 
     //----- Message factory methods ------------------------------------------//
 
     @Override
     public BytesMessage createBytesMessage() throws JMSException {
-        return getInternalSession().createBytesMessage();
+        return safeGetSessionProxy().createBytesMessage();
     }
 
     @Override
     public MapMessage createMapMessage() throws JMSException {
-        return getInternalSession().createMapMessage();
+        return safeGetSessionProxy().createMapMessage();
     }
 
     @Override
     public Message createMessage() throws JMSException {
-        return getInternalSession().createMessage();
+        return safeGetSessionProxy().createMessage();
     }
 
     @Override
     public ObjectMessage createObjectMessage() throws JMSException {
-        return getInternalSession().createObjectMessage();
+        return safeGetSessionProxy().createObjectMessage();
     }
 
     @Override
     public ObjectMessage createObjectMessage(Serializable serializable) throws JMSException {
-        return getInternalSession().createObjectMessage(serializable);
+        return safeGetSessionProxy().createObjectMessage(serializable);
     }
 
     @Override
     public StreamMessage createStreamMessage() throws JMSException {
-        return getInternalSession().createStreamMessage();
+        return safeGetSessionProxy().createStreamMessage();
     }
 
     @Override
     public TextMessage createTextMessage() throws JMSException {
-        return getInternalSession().createTextMessage();
+        return safeGetSessionProxy().createTextMessage();
     }
 
     @Override
     public TextMessage createTextMessage(String s) throws JMSException {
-        return getInternalSession().createTextMessage(s);
+        return safeGetSessionProxy().createTextMessage(s);
     }
 
     //----- Session management APIs ------------------------------------------//
 
     @Override
-    public void unsubscribe(String s) throws JMSException {
-        getInternalSession().unsubscribe(s);
+    public void unsubscribe(String subscriptionName) throws JMSException {
+        safeGetSessionProxy().unsubscribe(subscriptionName);
     }
 
     @Override
     public int getAcknowledgeMode() throws JMSException {
-        return getInternalSession().getAcknowledgeMode();
+        return safeGetSessionProxy().getAcknowledgeMode();
     }
 
     @Override
     public boolean getTransacted() throws JMSException {
-        return getInternalSession().getTransacted();
+        return safeGetSessionProxy().getTransacted();
     }
 
     @Override
     public void recover() throws JMSException {
-        getInternalSession().recover();
+        safeGetSessionProxy().recover();
     }
 
     @Override
     public void commit() throws JMSException {
-        getInternalSession().commit();
+        safeGetSessionProxy().commit();
     }
 
     @Override
     public void rollback() throws JMSException {
-        getInternalSession().rollback();
-    }
-
-    @Override
-    public XAResource getXAResource() {
-        final PooledSessionHolder session;
-        try {
-            session = safeGetSessionHolder();
-        } catch (JMSException e) {
-            throw JMSExceptionSupport.createRuntimeException(e);
-        }
-
-        if (session.getSession() instanceof XASession) {
-            return ((XASession) session.getSession()).getXAResource();
-        }
-
-        return null;
-    }
-
-    @Override
-    public Session getSession() {
-        return this;
+        safeGetSessionProxy().rollback();
     }
 
     //----- Java EE Session run entry point ----------------------------------//
 
     @Override
     public MessageListener getMessageListener() throws JMSException {
-        return getInternalSession().getMessageListener();
+        return safeGetSessionProxy().getMessageListener();
     }
 
     @Override
     public void setMessageListener(MessageListener messageListener) throws JMSException {
-        getInternalSession().setMessageListener(messageListener);
+        safeGetSessionProxy().setMessageListener(messageListener);
     }
 
     @Override
     public void run() {
-        final PooledSessionHolder session;
+        final JmsPoolSessionProxy session;
+
         try {
-            session = safeGetSessionHolder();
+            session = safeGetSessionProxy();
         } catch (JMSException e) {
             throw JMSExceptionSupport.createRuntimeException(e);
         }
 
         if (session != null) {
-            session.getSession().run();
+            session.run();
         }
     }
 
@@ -350,158 +293,144 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
 
     @Override
     public QueueBrowser createBrowser(Queue queue) throws JMSException {
-        return addQueueBrowser(getInternalSession().createBrowser(queue));
+        return addCloseable(new JmsPoolQueueBrowser(safeGetSessionProxy().createBrowser(queue), this::onQueueBrowserClose));
     }
 
     @Override
     public QueueBrowser createBrowser(Queue queue, String selector) throws JMSException {
-        return addQueueBrowser(getInternalSession().createBrowser(queue, selector));
+        return addCloseable(new JmsPoolQueueBrowser(safeGetSessionProxy().createBrowser(queue, selector), this::onQueueBrowserClose));
     }
 
     @Override
     public MessageConsumer createConsumer(Destination destination) throws JMSException {
-        return addConsumer(getInternalSession().createConsumer(destination));
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createConsumer(destination), this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createConsumer(Destination destination, String selector) throws JMSException {
-        return addConsumer(getInternalSession().createConsumer(destination, selector));
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createConsumer(destination, selector), this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createConsumer(Destination destination, String selector, boolean noLocal) throws JMSException {
-        return addConsumer(getInternalSession().createConsumer(destination, selector, noLocal));
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createConsumer(destination, selector, noLocal), this::onConsumerClose));
     }
 
     @Override
     public TopicSubscriber createDurableSubscriber(Topic topic, String selector) throws JMSException {
-        return addTopicSubscriber(getInternalSession().createDurableSubscriber(topic, selector));
+        return addCloseable(new JmsPoolTopicSubscriber(safeGetSessionProxy().createDurableSubscriber(topic, selector), this::onConsumerClose));
     }
 
     @Override
     public TopicSubscriber createDurableSubscriber(Topic topic, String name, String selector, boolean noLocal) throws JMSException {
-        return addTopicSubscriber(getInternalSession().createDurableSubscriber(topic, name, selector, noLocal));
+        return addCloseable(new JmsPoolTopicSubscriber(safeGetSessionProxy().createDurableSubscriber(topic, name, selector, noLocal), this::onConsumerClose));
     }
 
     @Override
     public TopicSubscriber createSubscriber(Topic topic) throws JMSException {
-        return addTopicSubscriber(((TopicSession) getInternalSession()).createSubscriber(topic));
+        return addCloseable(new JmsPoolTopicSubscriber(safeGetSessionProxy().createSubscriber(topic), this::onConsumerClose));
     }
 
     @Override
     public TopicSubscriber createSubscriber(Topic topic, String selector, boolean local) throws JMSException {
-        return addTopicSubscriber(((TopicSession) getInternalSession()).createSubscriber(topic, selector, local));
+        return addCloseable(new JmsPoolTopicSubscriber(safeGetSessionProxy().createSubscriber(topic, selector, local), this::onConsumerClose));
     }
 
     @Override
     public QueueReceiver createReceiver(Queue queue) throws JMSException {
-        return addQueueReceiver(((QueueSession) getInternalSession()).createReceiver(queue));
+        return addCloseable(new JmsPoolQueueReceiver(safeGetSessionProxy().createReceiver(queue), this::onConsumerClose));
     }
 
     @Override
     public QueueReceiver createReceiver(Queue queue, String selector) throws JMSException {
-        return addQueueReceiver(((QueueSession) getInternalSession()).createReceiver(queue, selector));
+        return addCloseable(new JmsPoolQueueReceiver(safeGetSessionProxy().createReceiver(queue, selector), this::onConsumerClose));
     }
 
     //----- JMS 2.0 Subscriber creation API ----------------------------------//
 
     @Override
     public MessageConsumer createSharedConsumer(Topic topic, String sharedSubscriptionName) throws JMSException {
-        PooledSessionHolder state = safeGetSessionHolder();
-        state.getConnection().checkClientJMSVersionSupport(2, 0);
-        return addConsumer(state.getSession().createSharedConsumer(topic, sharedSubscriptionName));
+        // TODO : Enforce version of JMS supports this feature
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createSharedConsumer(topic, sharedSubscriptionName), this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createSharedConsumer(Topic topic, String sharedSubscriptionName, String messageSelector) throws JMSException {
-        PooledSessionHolder state = safeGetSessionHolder();
-        state.getConnection().checkClientJMSVersionSupport(2, 0);
-        return addConsumer(state.getSession().createSharedConsumer(topic, sharedSubscriptionName, messageSelector));
+        // TODO : Enforce version of JMS supports this feature
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createSharedConsumer(topic, sharedSubscriptionName, messageSelector), this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createDurableConsumer(Topic topic, String name) throws JMSException {
-        PooledSessionHolder state = safeGetSessionHolder();
-        state.getConnection().checkClientJMSVersionSupport(2, 0);
-        return addConsumer(state.getSession().createDurableConsumer(topic, name));
+        // TODO : Enforce version of JMS supports this feature
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createDurableConsumer(topic, name), this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createDurableConsumer(Topic topic, String name, String messageSelector, boolean noLocal) throws JMSException {
-        PooledSessionHolder state = safeGetSessionHolder();
-        state.getConnection().checkClientJMSVersionSupport(2, 0);
-        return addConsumer(state.getSession().createDurableConsumer(topic, name, messageSelector, noLocal));
+        // TODO : Enforce version of JMS supports this feature
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createDurableConsumer(topic, name, messageSelector, noLocal), this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createSharedDurableConsumer(Topic topic, String name) throws JMSException {
-        PooledSessionHolder state = safeGetSessionHolder();
-        state.getConnection().checkClientJMSVersionSupport(2, 0);
-        return addConsumer(state.getSession().createSharedDurableConsumer(topic, name));
+        // TODO : Enforce version of JMS supports this feature
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createSharedDurableConsumer(topic, name), this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createSharedDurableConsumer(Topic topic, String name, String messageSelector) throws JMSException {
-        PooledSessionHolder state = safeGetSessionHolder();
-        state.getConnection().checkClientJMSVersionSupport(2, 0);
-        return addConsumer(state.getSession().createSharedDurableConsumer(topic, name, messageSelector));
+        // TODO : Enforce version of JMS supports this feature
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createSharedDurableConsumer(topic, name, messageSelector), this::onConsumerClose));
     }
 
     //----- Producer related methods -----------------------------------------//
 
     @Override
     public MessageProducer createProducer(Destination destination) throws JMSException {
-        JmsPoolMessageProducer result = safeGetSessionHolder().getOrCreateProducer(this, destination);
-        producers.add(result);
-        return result;
+        return addCloseable(new JmsPoolMessageProducer(safeGetSessionProxy().createProducer(destination), destination, this::onProducerClosed));
     }
 
     @Override
     public QueueSender createSender(Queue queue) throws JMSException {
-        JmsPoolQueueSender result = safeGetSessionHolder().getOrCreateSender(this, queue);
-        producers.add(result);
-        return result;
+        return addCloseable(new JmsPoolQueueSender(safeGetSessionProxy().createSender(queue), queue, this::onProducerClosed));
     }
 
     @Override
     public TopicPublisher createPublisher(Topic topic) throws JMSException {
-        JmsPoolTopicPublisher result = safeGetSessionHolder().getOrCreatePublisher(this, topic);
-        producers.add(result);
-        return result;
+        return addCloseable(new JmsPoolTopicPublisher(safeGetSessionProxy().createPublisher(topic), topic, this::onProducerClosed));
     }
 
     //----- Session configuration methods ------------------------------------//
 
+    /**
+     * Adds a listener to the pooled session wrapper for some specific life-cycle events.
+     *
+     * @param listener
+     * 	The new event listener to add to the set assigned to this wrapper instance.
+     *
+     * @throws JMSException if an error occurs while attempting to add the event listener.
+     */
     public void addSessionEventListener(JmsPoolSessionEventListener listener) throws JMSException {
         checkClosed();
-        if (!sessionEventListeners.contains(listener)) {
-            this.sessionEventListeners.add(listener);
-        }
+        sessionEventListeners.put(listener, listener);
     }
 
-    public Session getInternalSession() throws JMSException {
-        return safeGetSessionHolder().getSession();
-    }
-
-    public void setIsXa(boolean isXa) {
-        this.isXa = isXa;
-    }
-
-    public boolean isIgnoreClose() {
-        return ignoreClose;
-    }
-
-    public void setIgnoreClose(boolean ignoreClose) {
-        this.ignoreClose = ignoreClose;
+    /**
+     * Provides a means of accessing the underlying JMS {@link Session} that this pooled session
+     * wrapper is managing. This is mainly a test point and should not be used by application logic.
+     *
+     * @return the underling JMS {@link Session} that this object is wrapping.
+     *
+     * @throws JMSException if an error occurs while attempting to access the session.
+     */
+    Session getProviderSession() throws JMSException {
+        return safeGetSessionProxy().getProviderSession();
     }
 
     @Override
     public String toString() {
-        try {
-            return getClass().getSimpleName() + " { " + safeGetSessionHolder() + " }";
-        } catch (JMSException e) {
-            return getClass().getSimpleName() + " { " + null + " }";
-        }
+        return getClass().getSimpleName() + " { " + session + " }";
     }
 
     //----- Consumer callback methods ----------------------------------------//
@@ -516,7 +445,7 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
      * 		the consumer which is being closed.
      */
     protected void onConsumerClose(JmsPoolMessageConsumer consumer) {
-        consumers.remove(consumer);
+        resources.remove(consumer);
     }
 
     /**
@@ -529,7 +458,7 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
      * 		the browser which is being closed.
      */
     protected void onQueueBrowserClose(JmsPoolQueueBrowser browser) {
-        browsers.remove(browser);
+        resources.remove(browser);
     }
 
     /**
@@ -540,62 +469,34 @@ public class JmsPoolSession implements Session, TopicSession, QueueSession, XASe
      *
      * @param producer
      * 		the producer which is being closed.
-     * @param force
-     * 		should the producer be closed regardless of other configuration
-     *
-     * @throws JMSException if an error occurs while closing the provider MessageProducer.
      */
-    protected void onMessageProducerClosed(JmsPoolMessageProducer producer, boolean force) throws JMSException {
-        producers.remove(producer);
-        safeGetSessionHolder().onJmsPoolProducerClosed(producer, force);
+    protected void onProducerClosed(JmsPoolMessageProducer producer) {
+        resources.remove(producer);
     }
 
     //----- Internal support methods -----------------------------------------//
 
-    protected void checkClientJMSVersionSupport(int major, int minor) throws JMSException {
-        safeGetSessionHolder().getConnection().checkClientJMSVersionSupport(major, minor);
-    }
-
-    protected boolean isJMSVersionSupported(int major, int minor) throws JMSException {
-        return safeGetSessionHolder().getConnection().isJMSVersionSupported(major, minor);
-    }
-
     private void checkClosed() throws IllegalStateException {
-        if (closed.get()) {
-            throw new IllegalStateException("Session is closed");
+        if (closed != 0) {
+            throw new IllegalStateException("Session has already been closed");
         }
     }
 
-    private QueueBrowser addQueueBrowser(QueueBrowser browser) {
-        browser = new JmsPoolQueueBrowser(this, browser);
-        browsers.add((JmsPoolQueueBrowser) browser);
-        return browser;
+    private <T extends AutoCloseable> T addCloseable(T closeable) {
+        resources.put(closeable, closeable);
+        return closeable;
     }
 
-    private MessageConsumer addConsumer(MessageConsumer consumer) {
-        consumer = new JmsPoolMessageConsumer(this, consumer);
-        consumers.add((JmsPoolMessageConsumer) consumer);
-        return consumer;
+    protected boolean isTransactional() {
+        return transactional;
     }
 
-    private TopicSubscriber addTopicSubscriber(TopicSubscriber subscriber) {
-        subscriber = new JmsPoolTopicSubscriber(this, subscriber);
-        consumers.add((JmsPoolMessageConsumer) subscriber);
-        return subscriber;
+    protected boolean isRollbackOnClose() {
+        return transactional;
     }
 
-    private QueueReceiver addQueueReceiver(QueueReceiver receiver) {
-        receiver = new JmsPoolQueueReceiver(this, receiver);
-        consumers.add((JmsPoolMessageConsumer) receiver);
-        return receiver;
-    }
-
-    private PooledSessionHolder safeGetSessionHolder() throws JMSException {
-        PooledSessionHolder sessionHolder = this.sessionHolder;
-        if (sessionHolder == null) {
-            throw new IllegalStateException("The session has already been closed");
-        }
-
-        return sessionHolder;
+    protected JmsPoolSessionProxy safeGetSessionProxy() throws JMSException {
+        checkClosed();
+        return this.session;
     }
 }

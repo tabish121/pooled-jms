@@ -26,6 +26,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
+
 import jakarta.jms.BytesMessage;
 import jakarta.jms.CompletionListener;
 import jakarta.jms.DeliveryMode;
@@ -39,8 +41,6 @@ import jakarta.jms.MessageFormatException;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.ObjectMessage;
 import jakarta.jms.TextMessage;
-
-import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
 
 /**
  * JMSProducer implementation back by a pooled Connection.
@@ -77,7 +77,7 @@ public class JmsPoolJMSProducer implements JMSProducer {
      * @param producer
      *      The shared MessageProducer owned by the parent Session.
      */
-    public JmsPoolJMSProducer(JmsPoolSession session, JmsPoolMessageProducer producer) {
+    JmsPoolJMSProducer(JmsPoolSession session, JmsPoolMessageProducer producer) {
         this.session = session;
         this.producer = producer;
     }
@@ -103,7 +103,7 @@ public class JmsPoolJMSProducer implements JMSProducer {
     @Override
     public JMSProducer send(Destination destination, byte[] body) {
         try {
-            BytesMessage message = session.createBytesMessage();
+            final BytesMessage message = session.createBytesMessage();
             message.writeBytes(body);
             doSend(destination, message);
         } catch (JMSException jmse) {
@@ -116,7 +116,7 @@ public class JmsPoolJMSProducer implements JMSProducer {
     @Override
     public JMSProducer send(Destination destination, Map<String, Object> body) {
         try {
-            MapMessage message = session.createMapMessage();
+            final MapMessage message = session.createMapMessage();
             for (Map.Entry<String, Object> entry : body.entrySet()) {
                 message.setObject(entry.getKey(), entry.getValue());
             }
@@ -132,7 +132,7 @@ public class JmsPoolJMSProducer implements JMSProducer {
     @Override
     public JMSProducer send(Destination destination, Serializable body) {
         try {
-            ObjectMessage message = session.createObjectMessage();
+            final ObjectMessage message = session.createObjectMessage();
             message.setObject(body);
             doSend(destination, message);
         } catch (JMSException jmse) {
@@ -145,7 +145,7 @@ public class JmsPoolJMSProducer implements JMSProducer {
     @Override
     public JMSProducer send(Destination destination, String body) {
         try {
-            TextMessage message = session.createTextMessage(body);
+            final TextMessage message = session.createTextMessage(body);
             doSend(destination, message);
         } catch (JMSException jmse) {
             throw JMSExceptionSupport.createRuntimeException(jmse);
@@ -155,7 +155,6 @@ public class JmsPoolJMSProducer implements JMSProducer {
     }
 
     private void doSend(Destination destination, Message message) throws JMSException {
-
         if (message == null) {
             throw new MessageFormatException("Message must not be null");
         }
@@ -456,9 +455,17 @@ public class JmsPoolJMSProducer implements JMSProducer {
         return this;
     }
 
-    public MessageProducer getMessageProducer() throws JMSRuntimeException {
+    /**
+     * Gets the JMS {@link MessageProducer} that backs this JMS Producer instance. This is
+     * primarily meant as a test point and application logic should not depend on this method.
+     *
+     * @return the {@link MessageProducer} that backs this {@link JMSProducer}
+     *
+     * @throws JMSRuntimeException if an error occurs while accessing the backing producer.
+     */
+    MessageProducer getProviderMessageProducer() throws JMSRuntimeException {
         try {
-            return producer.getMessageProducer();
+            return producer.getProviderMessageProducer();
         } catch (JMSException jmsex) {
             throw JMSExceptionSupport.createRuntimeException(jmsex);
         }
