@@ -36,6 +36,7 @@ import org.mockito.MockitoAnnotations;
 import jakarta.jms.Connection;
 import jakarta.jms.ConnectionMetaData;
 import jakarta.jms.JMSException;
+import jakarta.jms.Session;
 import jakarta.jms.XASession;
 import jakarta.transaction.RollbackException;
 import jakarta.transaction.Transaction;
@@ -47,6 +48,8 @@ import jakarta.transaction.TransactionManager;
 class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
 
     protected JmsPoolXAConnectionFactory xaCF;
+
+    protected MockJMSXAConnectionFactory factory;
 
     @Mock
     TransactionManager txManager;
@@ -99,10 +102,42 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
 
     @Test
     public void testCreateXASession() throws Exception {
+        when(txn.enlistResource(any())).thenReturn(true);
+
         JmsPoolConnection connection = (JmsPoolConnection) xaCF.createConnection();
         XASession session = (XASession) connection.createSession();
 
+        assertNotNull(session);
+
+        assertEquals(0, connection.getNumtIdleSessions());
+        session.close();
+
+        // Session should be ignoring close at this stage
+        assertEquals(0, connection.getNumtIdleSessions());
+    }
+
+    @Test
+    public void testCreateTopicSession() throws Exception {
         when(txn.enlistResource(any())).thenReturn(true);
+
+        JmsPoolConnection connection = (JmsPoolConnection) xaCF.createConnection();
+        XASession session = (XASession) connection.createTopicSession(true, Session.SESSION_TRANSACTED);
+
+        assertNotNull(session);
+
+        assertEquals(0, connection.getNumtIdleSessions());
+        session.close();
+
+        // Session should be ignoring close at this stage
+        assertEquals(0, connection.getNumtIdleSessions());
+    }
+
+    @Test
+    public void testCreateQueueSession() throws Exception {
+        when(txn.enlistResource(any())).thenReturn(true);
+
+        JmsPoolConnection connection = (JmsPoolConnection) xaCF.createConnection();
+        XASession session = (XASession) connection.createQueueSession(true, Session.SESSION_TRANSACTED);
 
         assertNotNull(session);
 
@@ -127,8 +162,33 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
     }
 
     @Test
+    public void testCreateXASessionFailsOnAddSynchronizationXAConnection() throws Exception {
+        JmsPoolConnection connection = (JmsPoolConnection) xaCF.createXAConnection();
+
+        doThrow(RollbackException.class).when(txn).registerSynchronization(any());
+        when(txn.enlistResource(any())).thenReturn(true);
+
+        assertThrows(JMSException.class, () -> connection.createSession());
+
+        // Session should be invalidated as we don't know the state after failed register
+        assertEquals(0, connection.getNumtIdleSessions());
+    }
+
+    @Test
     public void testCreateXASessionFailsOnEnlist() throws Exception {
         JmsPoolConnection connection = (JmsPoolConnection) xaCF.createConnection();
+
+        when(txn.enlistResource(any())).thenReturn(false);
+
+        assertThrows(JMSException.class, () -> connection.createSession());
+
+        // Session should be invalidated as we don't know the state after failed enlist
+        assertEquals(0, connection.getNumtIdleSessions());
+    }
+
+    @Test
+    public void testCreateXASessionFailsOnEnlistXAConnection() throws Exception {
+        JmsPoolConnection connection = (JmsPoolConnection) xaCF.createXAConnection();
 
         when(txn.enlistResource(any())).thenReturn(false);
 

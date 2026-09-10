@@ -21,14 +21,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.fail;
 
-import jakarta.jms.IllegalStateException;
-import jakarta.jms.IllegalStateRuntimeException;
-import jakarta.jms.JMSConsumer;
-import jakarta.jms.JMSException;
-import jakarta.jms.JMSRuntimeException;
-import jakarta.jms.Message;
-import jakarta.jms.MessageListener;
-
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +30,14 @@ import org.messaginghub.pooled.jms.mock.MockJMSConnection;
 import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
 import org.messaginghub.pooled.jms.mock.MockJMSMessageConsumer;
 import org.messaginghub.pooled.jms.mock.MockJMSSession;
+
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.IllegalStateRuntimeException;
+import jakarta.jms.JMSConsumer;
+import jakarta.jms.JMSException;
+import jakarta.jms.JMSRuntimeException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageListener;
 
 @Timeout(60)
 public class JmsPoolJMSConsumerTest extends JmsPoolTestSupport {
@@ -198,7 +198,7 @@ public class JmsPoolJMSConsumerTest extends JmsPoolTestSupport {
     public void testJMSExOnConsumerCloseConvertedToJMSREx() throws JMSException {
         JMSConsumer consumer = context.createConsumer(context.createTemporaryQueue());
 
-        MockJMSConnection connection = (MockJMSConnection) context.getConnection();
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
         connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override

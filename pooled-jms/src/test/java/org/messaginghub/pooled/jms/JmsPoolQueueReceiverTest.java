@@ -21,16 +21,16 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.messaginghub.pooled.jms.mock.MockJMSMessageConsumer;
+
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
 import jakarta.jms.Queue;
 import jakarta.jms.QueueReceiver;
 import jakarta.jms.QueueSession;
 import jakarta.jms.Session;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import org.messaginghub.pooled.jms.mock.MockJMSQueueReceiver;
 
 /**
  * Tests for the JMS Pool QueueReceiver wrapper
@@ -73,13 +73,13 @@ public class JmsPoolQueueReceiverTest extends JmsPoolTestSupport {
         Queue queue = session.createTemporaryQueue();
         JmsPoolQueueReceiver receiver = (JmsPoolQueueReceiver) session.createReceiver(queue);
 
-        assertNotNull(receiver.getQueueReceiver());
-        assertTrue(receiver.getQueueReceiver() instanceof MockJMSQueueReceiver);
+        assertNotNull(receiver.getProviderMessageConsumer());
+        assertTrue(receiver.getProviderMessageConsumer() instanceof MockJMSMessageConsumer);
 
         receiver.close();
 
         try {
-            receiver.getQueueReceiver();
+            receiver.getProviderMessageConsumer();
             fail("Cannot read state on closed receiver");
         } catch (IllegalStateException ise) {}
     }

@@ -16,6 +16,10 @@
  */
 package org.messaginghub.pooled.jms;
 
+import java.util.function.Consumer;
+
+import org.messaginghub.pooled.jms.internal.JmsPoolMessageConsumerProxy;
+
 import jakarta.jms.JMSException;
 import jakarta.jms.Topic;
 import jakarta.jms.TopicSubscriber;
@@ -25,34 +29,22 @@ import jakarta.jms.TopicSubscriber;
  */
 public class JmsPoolTopicSubscriber extends JmsPoolMessageConsumer implements TopicSubscriber, AutoCloseable {
 
-    /**
-     * Wraps the TopicSubscriber.
-     *
-     * @param session
-     * 		the pooled session that created this object.
-     * @param delegate
-     * 		the created QueueBrowser to wrap.
-     */
-    public JmsPoolTopicSubscriber(JmsPoolSession session, TopicSubscriber delegate) {
-        super(session, delegate);
+    JmsPoolTopicSubscriber(JmsPoolMessageConsumerProxy delegate, Consumer<JmsPoolMessageConsumer> onClose) {
+        super(delegate, onClose);
     }
 
     @Override
     public Topic getTopic() throws JMSException {
-        return getTopicSubscriber().getTopic();
+        return getDelegate().getTopic();
     }
 
     @Override
     public boolean getNoLocal() throws JMSException {
-        return getTopicSubscriber().getNoLocal();
+        return getDelegate().getNoLocal();
     }
 
     @Override
     public String toString() {
         return getClass().getSimpleName() + " { " + getDelegate() + " }";
-    }
-
-    public TopicSubscriber getTopicSubscriber() throws JMSException {
-        return (TopicSubscriber) super.getMessageConsumer();
     }
 }

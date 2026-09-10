@@ -19,6 +19,9 @@ package org.messaginghub.pooled.jms.util;
 import java.util.Date;
 import java.util.HashMap;
 
+/**
+ * A conversion support helper for conversion from objects of one type to another in JMS classes.
+ */
 public final class TypeConversionSupport {
 
     static class ConversionKey {
@@ -42,7 +45,8 @@ public final class TypeConversionSupport {
                 return false;
             }
 
-            ConversionKey x = (ConversionKey) o;
+            final ConversionKey x = (ConversionKey) o;
+
             return x.from == from && x.to == to;
         }
 
@@ -156,6 +160,16 @@ public final class TypeConversionSupport {
         });
     }
 
+    /**
+     * Attempts to convert the given value into the type provided.
+     *
+     * @param value
+     * 	The value to convert
+     * @param toClass
+     *  The type used to attempt the conversion
+     *
+     * @return the converted object
+     */
     public static Object convert(Object value, Class<?> toClass) {
 
         assert value != null && toClass != null;
@@ -174,7 +188,8 @@ public final class TypeConversionSupport {
             toClass = convertPrimitiveTypeToWrapperType(toClass);
         }
 
-        Converter c = CONVERSION_MAP.get(new ConversionKey(fromClass, toClass));
+        final Converter c = CONVERSION_MAP.get(new ConversionKey(fromClass, toClass));
+
         if (c == null) {
             return null;
         }
@@ -184,6 +199,7 @@ public final class TypeConversionSupport {
 
     private static Class<?> convertPrimitiveTypeToWrapperType(Class<?> type) {
         Class<?> rc = type;
+
         if (type.isPrimitive()) {
             if (type == int.class) {
                 rc = Integer.class;

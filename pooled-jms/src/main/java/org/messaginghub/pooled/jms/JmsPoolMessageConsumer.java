@@ -16,7 +16,10 @@
  */
 package org.messaginghub.pooled.jms;
 
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.function.Consumer;
+
+import org.messaginghub.pooled.jms.internal.JmsPoolMessageConsumerProxy;
 
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
@@ -29,29 +32,32 @@ import jakarta.jms.MessageListener;
  */
 public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
 
-    private final JmsPoolSession session;
-    private final MessageConsumer messageConsumer;
-    private final AtomicBoolean closed = new AtomicBoolean();
+    private static final AtomicIntegerFieldUpdater<JmsPoolMessageConsumer> CLOSED_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(JmsPoolMessageConsumer.class, "closed");
+
+    private final Consumer<JmsPoolMessageConsumer> onClose;
+    private final JmsPoolMessageConsumerProxy messageConsumer;
+    private volatile int closed;
 
     /**
      * Wraps the message consumer.
      *
-     * @param session
-     * 		the pooled session
      * @param messageConsumer
      * 		the created consumer to wrap
      */
-    JmsPoolMessageConsumer(JmsPoolSession session, MessageConsumer messageConsumer) {
-        this.session = session;
+    JmsPoolMessageConsumer(JmsPoolMessageConsumerProxy messageConsumer, Consumer<JmsPoolMessageConsumer> onClose) {
         this.messageConsumer = messageConsumer;
+        this.onClose = onClose;
     }
 
     @Override
     public void close() throws JMSException {
-        // ensure session removes consumer from it's list of managed resources.
-        if (closed.compareAndSet(false, true)) {
-            session.onConsumerClose(this);
-            messageConsumer.close();
+        if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
+            try {
+                messageConsumer.close();
+            } finally {
+                onClose.accept(this);
+            }
         }
     }
 
@@ -96,20 +102,38 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
         return getClass().getSimpleName() + " { " + messageConsumer + " }";
     }
 
-    public MessageConsumer getMessageConsumer() throws JMSException {
+    /**
+     * Provides access to the wrapped JMS {@link MessageConsumer} and is meant primarily as a
+     * test point and the application logic should not depend on this method.
+     *
+     * @return the wrapped JMS {@link MessageConsumer}.
+     *
+     * @throws JMSException if an error occurs while accessing the wrapped consumer.
+     */
+    MessageConsumer getProviderMessageConsumer() throws JMSException {
         checkClosed();
-        return messageConsumer;
+        return messageConsumer.getProviderMessageConsumer();
     }
 
     //----- Internal support methods -----------------------------------------//
 
+    /**
+     * Checks if the wrapper has been closed previously.
+     *
+     * @throws JMSException if the wrapper was closed.
+     */
     protected void checkClosed() throws JMSException {
-        if (closed.get()) {
+        if (closed != 0) {
             throw new IllegalStateException("The MessageConsumer is closed");
         }
     }
 
-    protected MessageConsumer getDelegate() {
+    /**
+     * Returns the message consumer proxy object for subclass to access
+     *
+     * @return the message consumer proxy backing this wrapper.
+     */
+    protected JmsPoolMessageConsumerProxy getDelegate() {
         return messageConsumer;
     }
 }

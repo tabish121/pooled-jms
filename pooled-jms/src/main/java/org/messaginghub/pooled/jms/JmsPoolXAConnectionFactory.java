@@ -17,15 +17,10 @@
 package org.messaginghub.pooled.jms;
 
 import java.io.Serializable;
+import java.lang.invoke.MethodHandles;
 import java.util.Hashtable;
 import java.util.Map;
 
-import jakarta.jms.Connection;
-import jakarta.jms.JMSException;
-import jakarta.jms.XAConnection;
-import jakarta.jms.XAConnectionFactory;
-import jakarta.jms.XAJMSContext;
-import jakarta.transaction.TransactionManager;
 import javax.naming.Binding;
 import javax.naming.Context;
 import javax.naming.InitialContext;
@@ -33,25 +28,110 @@ import javax.naming.Name;
 import javax.naming.NamingEnumeration;
 import javax.naming.spi.ObjectFactory;
 
-import org.messaginghub.pooled.jms.pool.PooledConnectionKey;
-import org.messaginghub.pooled.jms.pool.PooledXAConnection;
+import org.messaginghub.pooled.jms.internal.JmsPoolXAConnectionProxyFactory;
 import org.messaginghub.pooled.jms.util.IntrospectionSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * A pooled connection factory that automatically enlists sessions in the
- * current active XA transaction if any.
- */
-public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory implements ObjectFactory, Serializable, XAConnectionFactory {
+import jakarta.jms.IllegalStateRuntimeException;
+import jakarta.jms.JMSException;
+import jakarta.jms.XAConnection;
+import jakarta.jms.XAConnectionFactory;
+import jakarta.jms.XAJMSContext;
+import jakarta.jms.XAQueueConnection;
+import jakarta.jms.XAQueueConnectionFactory;
+import jakarta.jms.XATopicConnection;
+import jakarta.jms.XATopicConnectionFactory;
+import jakarta.transaction.TransactionManager;
 
-    private static final transient Logger LOG = LoggerFactory.getLogger(JmsPoolXAConnectionFactory.class);
+public class JmsPoolXAConnectionFactory extends JmsPoolAbstractConnectionFactory<JmsPoolXAConnectionProxyFactory> implements ObjectFactory, Serializable, XAConnectionFactory, XAQueueConnectionFactory, XATopicConnectionFactory {
+
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
     private static final long serialVersionUID = 7753681333583183646L;
 
+    /**
+     * The connection proxy factory that creates the wrapped XAConnection instances for this factory.
+     */
+    private final JmsPoolXAConnectionProxyFactory proxyFactory = new JmsPoolXAConnectionProxyFactory();
+
+    /**
+     * Transaction manager that must be assigned for enlistment to take affect
+     */
     private TransactionManager transactionManager;
-    private boolean tmFromJndi = false;
+
+    /**
+     * Set if the transaction manager comes from JNDI configuration
+     */
+    private boolean tmFromJndi;
+
+    /**
+     * The JDNI name for the configuration from this connection factory
+     */
     private String tmJndiName = "java:/TransactionManager";
 
+    /**
+     * Creates the pooling connection factory in the started state but the application must configure
+     * a backing {@link XAConnectionFactory} before using any method in this object.
+     */
+    public JmsPoolXAConnectionFactory() {
+        super();
+    }
+
+    /**
+     * {@return a reference to the configured provider Connection factory}
+     */
+    public XAConnectionFactory getConnectionFactory() {
+        return proxyFactory.getConnectionFactory();
+    }
+
+    /**
+     * Sets the assigned provider Connection factory to use by this pooled Connection factory.
+     *
+     * @param factory
+     * 		The provider Connection factory to assign to this pooled factory.
+     */
+    public void setConnectionFactory(XAConnectionFactory factory) {
+        proxyFactory.setConnectionFactory(factory);
+    }
+
+    @Override
+    protected JmsPoolXAConnectionProxyFactory getConnectionFactoryProxy() {
+        return proxyFactory;
+    }
+
+    @Override
+    protected JmsPoolXAConnection newJmsPoolConnection(String username, String password) throws JMSException {
+        return new JmsPoolXAConnection(getConnectionFactoryProxy().createConnection(username, password), transactionManager);
+    }
+
+    @Override
+    protected JmsPoolXAJMSContext newJmsPoolContext(String username, String password, int sessionMode) throws JMSException {
+        return new JmsPoolXAJMSContext(newJmsPoolConnection(username, password), sessionMode);
+    }
+
+    @Override
+    protected XAJMSContext createProviderJmsContext(String username, String password, int sessionMode) {
+        final XAConnectionFactory factory = proxyFactory.getConnectionFactory();
+
+        if (factory == null) {
+            throw new IllegalStateRuntimeException("No XAConnectionFactory instance assigned to the pool XAConnectionFactory");
+        }
+
+        if (username == null && password == null) {
+            return factory.createXAContext();
+        } else {
+            return factory.createXAContext(username, password);
+        }
+    }
+
+    //----- API to manage the XA Connection Transaction manager
+
+    /**
+     * Gets the assigned {@link TransactionManager} this connection factory will use when creating
+     * new {@link XAConnection} instances.
+     *
+     * @return a {@link TransactionManager} either from assignment for from JNDI.
+     */
     public TransactionManager getTransactionManager() {
         if (transactionManager == null && tmFromJndi) {
             try {
@@ -65,53 +145,52 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
         return transactionManager;
     }
 
+    /**
+     * Sets the {@link TransactionManager} to use when creating new JMS {@link XAConnection} instances.
+     *
+     * @param transactionManager
+     * 	The transaction manager to use when creating new connections.
+     */
     public void setTransactionManager(TransactionManager transactionManager) {
         this.transactionManager = transactionManager;
     }
 
-    @Override
-    public void setConnectionFactory(Object toUse) {
-        if (toUse instanceof XAConnectionFactory) {
-            connectionFactory = toUse;
-        } else {
-            throw new IllegalArgumentException("connectionFactory should implement jakarta.jms.XAConnectionFactory");
-        }
+    /**
+     * Gets the assigned JNDI name for this pooled {@link XAConnectionFactory} instance.
+     *
+     * @return the configured JNDI name for this {@link XAConnectionFactory}
+     */
+    public String getTmJndiName() {
+        return tmJndiName;
     }
 
-    @Override
-    protected XAConnection createProviderConnection(PooledConnectionKey key) throws JMSException {
-        if (connectionFactory instanceof XAConnectionFactory) {
-            if (key.getUserName() == null && key.getPassword() == null) {
-                return ((XAConnectionFactory) connectionFactory).createXAConnection();
-            } else {
-                return ((XAConnectionFactory) connectionFactory).createXAConnection(key.getUserName(), key.getPassword());
-            }
-        } else {
-            throw new IllegalStateException("connectionFactory should implement jakarta.jms.XAConnectionFactory");
-        }
+    /**
+     * Sets the assigned JNDI name for this pooled {@link XAConnectionFactory} instance.
+     *
+     * @param tmJndiName
+     * 	The assigned JNDI name for the {@link XAConnectionFactory}.
+     */
+    public void setTmJndiName(String tmJndiName) {
+        this.tmJndiName = tmJndiName;
     }
 
-    @Override
-    protected XAJMSContext createProviderContext(String username, String password, int sessionMode) {
-        if (connectionFactory instanceof XAConnectionFactory) {
-            if (username == null && password == null) {
-                return ((XAConnectionFactory) connectionFactory).createXAContext();
-            } else {
-                return ((XAConnectionFactory) connectionFactory).createXAContext(username, password);
-            }
-        } else {
-            throw new jakarta.jms.IllegalStateRuntimeException("connectionFactory should implement jakarta.jms.XAConnectionFactory");
-        }
+    /**
+     * Gets if this factory is resolved from JNDI
+     *
+     * @return <code>true</code> if configured for resolution from JNDI.
+     */
+    public boolean isTmFromJndi() {
+        return tmFromJndi;
     }
 
-    @Override
-    protected PooledXAConnection createPooledConnection(Connection connection) {
-        return new PooledXAConnection(connection, getTransactionManager());
-    }
-
-    @Override
-    protected JmsPoolXAJMSContext newPooledConnectionContext(JmsPoolConnection connection, int sessionMode) {
-        return new JmsPoolXAJMSContext(connection, sessionMode);
+    /**
+     * Allow transaction manager resolution from JNDI (EE deployment)
+     *
+     * @param tmFromJndi
+     * 		controls if TXN manager resolution is from JNDI
+     */
+    public void setTmFromJndi(boolean tmFromJndi) {
+        this.tmFromJndi = tmFromJndi;
     }
 
     @SuppressWarnings("unchecked")
@@ -130,8 +209,8 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
             String name = (String) rootContextName;
             name = name.substring(0, name.lastIndexOf('/')) + "/conf" + name.substring(name.lastIndexOf('/'));
             try {
-                InitialContext ctx = new InitialContext();
-                NamingEnumeration<Binding> bindings = ctx.listBindings(name);
+                final InitialContext ctx = new InitialContext();
+                final NamingEnumeration<Binding> bindings = ctx.listBindings(name);
 
                 while (bindings.hasMore()) {
                     Binding bd = bindings.next();
@@ -146,45 +225,45 @@ public class JmsPoolXAConnectionFactory extends JmsPoolConnectionFactory impleme
         }
     }
 
-    public String getTmJndiName() {
-        return tmJndiName;
-    }
-
-    public void setTmJndiName(String tmJndiName) {
-        this.tmJndiName = tmJndiName;
-    }
-
-    public boolean isTmFromJndi() {
-        return tmFromJndi;
-    }
-
-    /**
-     * Allow transaction manager resolution from JNDI (ee deployment)
-     *
-     * @param tmFromJndi
-     * 		controls if TXN manager resolution is from JNDI
-     */
-    public void setTmFromJndi(boolean tmFromJndi) {
-        this.tmFromJndi = tmFromJndi;
-    }
+    //----- XA ConnectionFactory APIs for all connection type create calls
 
     @Override
     public XAConnection createXAConnection() throws JMSException {
-        return createProviderConnection(new PooledConnectionKey(null, null));
+        return (XAConnection) createConnection();
     }
 
     @Override
     public XAConnection createXAConnection(String userName, String password) throws JMSException {
-        return createProviderConnection(new PooledConnectionKey(userName, password));
+        return (XAConnection) createConnection(userName, password);
     }
 
     @Override
     public XAJMSContext createXAContext() {
-        return createProviderContext(null, null, 0);
+        return (XAJMSContext) createContext();
     }
 
     @Override
     public XAJMSContext createXAContext(String userName, String password) {
-        return createProviderContext(userName, password, 0);
+        return (XAJMSContext) createContext(userName, password, 0);
+    }
+
+    @Override
+    public XATopicConnection createXATopicConnection() throws JMSException {
+        return (XATopicConnection) createConnection();
+    }
+
+    @Override
+    public XATopicConnection createXATopicConnection(String userName, String password) throws JMSException {
+        return (XATopicConnection) createConnection(userName, password);
+    }
+
+    @Override
+    public XAQueueConnection createXAQueueConnection() throws JMSException {
+        return (XAQueueConnection) createConnection();
+    }
+
+    @Override
+    public XAQueueConnection createXAQueueConnection(String userName, String password) throws JMSException {
+        return (XAQueueConnection) createConnection(userName, password);
     }
 }

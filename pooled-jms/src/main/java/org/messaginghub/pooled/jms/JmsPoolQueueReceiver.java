@@ -16,6 +16,10 @@
  */
 package org.messaginghub.pooled.jms;
 
+import java.util.function.Consumer;
+
+import org.messaginghub.pooled.jms.internal.JmsPoolMessageConsumerProxy;
+
 import jakarta.jms.JMSException;
 import jakarta.jms.Queue;
 import jakarta.jms.QueueReceiver;
@@ -25,29 +29,17 @@ import jakarta.jms.QueueReceiver;
  */
 public class JmsPoolQueueReceiver extends JmsPoolMessageConsumer implements QueueReceiver, AutoCloseable {
 
-    /**
-     * Wraps the QueueReceiver.
-     *
-     * @param session
-     * 		the pooled session that created this object.
-     * @param delegate
-     * 		the created QueueReceiver to wrap.
-     */
-    public JmsPoolQueueReceiver(JmsPoolSession session, QueueReceiver delegate) {
-        super(session, delegate);
+    JmsPoolQueueReceiver(JmsPoolMessageConsumerProxy delegate, Consumer<JmsPoolMessageConsumer> onClose) {
+        super(delegate, onClose);
     }
 
     @Override
     public Queue getQueue() throws JMSException {
-        return getQueueReceiver().getQueue();
+        return getDelegate().getQueue();
     }
 
     @Override
     public String toString() {
         return getClass().getSimpleName() + " { " + getDelegate() + " }";
-    }
-
-    public QueueReceiver getQueueReceiver() throws JMSException {
-        return (QueueReceiver) super.getMessageConsumer();
     }
 }

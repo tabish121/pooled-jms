@@ -14,32 +14,44 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.messaginghub.pooled.jms.pool;
+package org.messaginghub.pooled.jms;
 
-import jakarta.jms.Connection;
-import jakarta.jms.JMSException;
-import jakarta.jms.XASession;
-import jakarta.transaction.TransactionManager;
 import javax.transaction.xa.XAResource;
 
 import org.apache.geronimo.transaction.manager.WrapperNamedXAResource;
-import org.messaginghub.pooled.jms.JmsPoolSession;
+import org.messaginghub.pooled.jms.internal.JmsPoolXAConnectionProxy;
 
-public class PooledJCAConnection extends PooledXAConnection {
+import jakarta.jms.JMSException;
+import jakarta.jms.XAConnection;
+import jakarta.transaction.TransactionManager;
+
+public class JmsPoolJcaConnection extends JmsPoolXAConnection implements XAConnection {
 
     private final String name;
 
-    public PooledJCAConnection(Connection connection, TransactionManager transactionManager, String name) {
+    JmsPoolJcaConnection(JmsPoolXAConnectionProxy connection, TransactionManager transactionManager, String name) {
         super(connection, transactionManager);
+
         this.name = name;
     }
 
+    /**
+     * Gets the name that was configured for this JCA {@link XAConnection}
+     *
+     * @return the name assigned to by the JCA XAConnectionFactory
+     */
+    public String getName() {
+        return name;
+    }
+
     @Override
-    protected XAResource createXaResource(JmsPoolSession session) throws JMSException {
-        XAResource xares = ((XASession)session.getInternalSession()).getXAResource();
+    protected XAResource createXaResource(JmsPoolXASession session) throws JMSException {
+        XAResource xares = session.getXAResource();
+
         if (name != null) {
             xares = new WrapperNamedXAResource(xares, name);
         }
+
         return xares;
     }
 }
