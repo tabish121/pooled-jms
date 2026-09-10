@@ -14,45 +14,44 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.messaginghub.pooled.jms;
+package org.messaginghub.pooled.jms.internal;
 
+import jakarta.jms.Connection;
 import jakarta.jms.ConnectionFactory;
+import jakarta.jms.JMSException;
 
-/**
- * A Custom pooled JCA {@link ConnectionFactory} instance.
- */
-public class JmsPoolJcaConnectionFactory extends JmsPoolXAConnectionFactory {
-
-    private static final long serialVersionUID = -2470093537159318333L;
+public final class JmsPoolConnectionProxyFactory extends JmsPoolAbstractConnectionProxyFactory<ConnectionFactory, JmsPoolConnectionProxy> {
 
     /**
-     * Assigned name for JCA factory
+     * The assigned {@link ConnectionFactory} fur use by this proxy factory
      */
-    private String name;
+    private ConnectionFactory connectionFactory;
 
     /**
      * Creates the pooling connection factory in the started state but the application must configure
      * a backing {@link ConnectionFactory} before using any method in this object.
      */
-    public JmsPoolJcaConnectionFactory() {
+    public JmsPoolConnectionProxyFactory() {
         super();
     }
 
-    /**
-     * Gets the name that was configured for this JCA {@link ConnectionFactory}
-     *
-     * @return the name assigned to this JCA ConnectionFactory
-     */
-    public String getName() {
-        return name;
+    @Override
+    public ConnectionFactory getConnectionFactory() {
+        return connectionFactory;
     }
 
-    /**
-     * Sets the name assigned to this JCA ConnectionFactory
-     *
-     * @param name The assigned name for this JCA {@link ConnectionFactory}.
-     */
-    public void setName(String name) {
-        this.name = name;
+    @Override
+    public void setConnectionFactory(ConnectionFactory factory) {
+        this.connectionFactory = factory;
+    }
+
+    @Override
+    protected JmsPoolConnectionProxy createConnectionProxy(JmsPoolConnectionConfiguration configuration, Connection connection) {
+        return new JmsPoolConnectionProxy(configuration, connection);
+    }
+
+    @Override
+    protected Connection createProviderConnection(String userName, String password) throws JMSException {
+        return getConnectionFactory().createConnection(userName, password);
     }
 }

@@ -365,42 +365,42 @@ public class MockJMSSession implements Session, QueueSession, TopicSession, Auto
     public MessageConsumer createSharedConsumer(Topic topic, String sharedSubscriptionName) throws JMSException {
         checkClosed();
         checkDestination(topic);
-        return new MockJMSMessageConsumer(this, getNextConsumerId(), (MockJMSTopic) topic, null, false);
+        return new MockJMSMessageConsumer(this, getNextConsumerId(), (MockJMSDestination) topic, null, false);
     }
 
     @Override
     public MessageConsumer createSharedConsumer(Topic topic, String sharedSubscriptionName, String messageSelector) throws JMSException {
         checkClosed();
         checkDestination(topic);
-        return new MockJMSMessageConsumer(this, getNextConsumerId(), (MockJMSTopic) topic, messageSelector, false);
+        return new MockJMSMessageConsumer(this, getNextConsumerId(), (MockJMSDestination) topic, messageSelector, false);
     }
 
     @Override
     public MessageConsumer createDurableConsumer(Topic topic, String name) throws JMSException {
         checkClosed();
         checkDestination(topic);
-        return new MockJMSMessageConsumer(this, getNextConsumerId(), (MockJMSTopic) topic, null, false);
+        return new MockJMSMessageConsumer(this, getNextConsumerId(), (MockJMSDestination) topic, null, false);
     }
 
     @Override
     public MessageConsumer createDurableConsumer(Topic topic, String name, String messageSelector, boolean noLocal)throws JMSException {
         checkClosed();
         checkDestination(topic);
-        return new MockJMSMessageConsumer(this, getNextConsumerId(), (MockJMSTopic) topic, messageSelector, noLocal);
+        return new MockJMSMessageConsumer(this, getNextConsumerId(), (MockJMSDestination) topic, messageSelector, noLocal);
     }
 
     @Override
     public MessageConsumer createSharedDurableConsumer(Topic topic, String name) throws JMSException {
         checkClosed();
         checkDestination(topic);
-        return new MockJMSMessageConsumer(this, getNextConsumerId(), (MockJMSTopic) topic, null, false);
+        return new MockJMSMessageConsumer(this, getNextConsumerId(), (MockJMSDestination) topic, null, false);
     }
 
     @Override
     public MessageConsumer createSharedDurableConsumer(Topic topic, String name, String messageSelector) throws JMSException {
         checkClosed();
         checkDestination(topic);
-        return new MockJMSMessageConsumer(this, getNextConsumerId(), (MockJMSTopic) topic, messageSelector, false);
+        return new MockJMSMessageConsumer(this, getNextConsumerId(), (MockJMSDestination) topic, messageSelector, false);
     }
 
     //----- JEE Session methods not implemented ------------------------------//

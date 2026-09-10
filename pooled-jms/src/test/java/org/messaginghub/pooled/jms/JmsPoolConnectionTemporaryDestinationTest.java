@@ -19,10 +19,6 @@ package org.messaginghub.pooled.jms;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
-import jakarta.jms.Queue;
-import jakarta.jms.Session;
-import jakarta.jms.Topic;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -30,6 +26,10 @@ import org.messaginghub.pooled.jms.mock.MockJMSConnection;
 import org.messaginghub.pooled.jms.mock.MockJMSConnectionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
 
 @Timeout(60)
 public class JmsPoolConnectionTemporaryDestinationTest {
@@ -63,7 +63,7 @@ public class JmsPoolConnectionTemporaryDestinationTest {
         Queue normalQueue = null;
 
         connection1 = (JmsPoolConnection) cf.createConnection();
-        pooledConnection = (MockJMSConnection) connection1.getConnection();
+        pooledConnection = (MockJMSConnection) connection1.getProviderConnection();
         session1 = connection1.createSession(false, Session.AUTO_ACKNOWLEDGE);
         tempQueue = session1.createTemporaryQueue();
         LOG.info("Created temporary queue named: " + tempQueue.getQueueName());
@@ -71,7 +71,7 @@ public class JmsPoolConnectionTemporaryDestinationTest {
         assertEquals(1, pooledConnection.getConnectionStats().getActiveTemporaryQueueCount());
 
         connection2 = (JmsPoolConnection) cf.createConnection();
-        assertSame(connection1.getConnection(), connection2.getConnection());
+        assertSame(connection1.getProviderConnection(), connection2.getProviderConnection());
         session2 = connection2.createSession(false, Session.AUTO_ACKNOWLEDGE);
         normalQueue = session2.createQueue("queue:FOO.TEST");
         LOG.info("Created queue named: " + normalQueue.getQueueName());
@@ -96,7 +96,7 @@ public class JmsPoolConnectionTemporaryDestinationTest {
 
         for (int i = 0; i < 10; i++) {
             connection = (JmsPoolConnection) cf.createConnection();
-            pooledConnection = (MockJMSConnection) connection.getConnection();
+            pooledConnection = (MockJMSConnection) connection.getProviderConnection();
             session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             tempQueue = session.createTemporaryQueue();
             LOG.info("Created queue named: " + tempQueue.getQueueName());
@@ -117,7 +117,7 @@ public class JmsPoolConnectionTemporaryDestinationTest {
 
         for (int i = 0; i < 10; i++) {
             connection = (JmsPoolConnection) cf.createConnection();
-            pooledConnection = (MockJMSConnection) connection.getConnection();
+            pooledConnection = (MockJMSConnection) connection.getProviderConnection();
             session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             tempTopic = session.createTemporaryTopic();
             LOG.info("Created queue named: " + tempTopic.getTopicName());

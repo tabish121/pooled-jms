@@ -16,22 +16,23 @@
  */
 package org.messaginghub.pooled.jms;
 
+import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
+
 import jakarta.jms.JMSConsumer;
 import jakarta.jms.JMSException;
 import jakarta.jms.JMSRuntimeException;
 import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
 import jakarta.jms.MessageListener;
 
-import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
-
 /**
- * JMSConsumer implementation backed by a pooled Connection.
+ * {@link JMSConsumer} implementation backed by a pooled Connection.
  */
 public class JmsPoolJMSConsumer implements JMSConsumer, AutoCloseable {
 
     private final JmsPoolMessageConsumer consumer;
 
-    public JmsPoolJMSConsumer(JmsPoolMessageConsumer consumer) {
+    JmsPoolJMSConsumer(JmsPoolMessageConsumer consumer) {
         this.consumer = consumer;
     }
 
@@ -120,5 +121,21 @@ public class JmsPoolJMSConsumer implements JMSConsumer, AutoCloseable {
     @Override
     public String toString() {
         return getClass().getSimpleName() + " { " + consumer + " }";
+    }
+
+    /**
+     * Gets the JMS {@link MessageConsumer} that backs this {@link JMSConsumer} instance. This is
+     * primarily meant as a test point and application logic should not depend on this method.
+     *
+     * @return the {@link MessageConsumer} that backs this {@link JMSConsumer}
+     *
+     * @throws JMSRuntimeException if an error occurs while accessing the backing consumer.
+     */
+    MessageConsumer getProviderMessageConsumer() throws JMSRuntimeException {
+        try {
+            return consumer.getProviderMessageConsumer();
+        } catch (JMSException jmsex) {
+            throw JMSExceptionSupport.createRuntimeException(jmsex);
+        }
     }
 }

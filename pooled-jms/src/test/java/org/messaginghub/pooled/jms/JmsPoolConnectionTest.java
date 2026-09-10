@@ -59,7 +59,7 @@ import jakarta.jms.TemporaryTopic;
 /**
  * A couple of tests against the PooledConnection class.
  */
-@Timeout(60)
+@Timeout(20)
 public class JmsPoolConnectionTest extends JmsPoolTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(JmsPoolConnectionTest.class);
@@ -79,7 +79,7 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
 
         assertNotNull(connection.getExceptionListener());
 
-        MockJMSConnection mockJMSConnection = (MockJMSConnection) ((JmsPoolConnection) connection).getConnection();
+        MockJMSConnection mockJMSConnection = (MockJMSConnection) ((JmsPoolConnection) connection).getProviderConnection();
         mockJMSConnection.injectConnectionError(new JMSException("Some non-fatal error"));
 
         assertTrue(signal.await(10, TimeUnit.SECONDS));
@@ -102,7 +102,7 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
 
         assertNotNull(connection.getExceptionListener());
 
-        MockJMSConnection mockJMSConnection = (MockJMSConnection) ((JmsPoolConnection) connection).getConnection();
+        MockJMSConnection mockJMSConnection = (MockJMSConnection) ((JmsPoolConnection) connection).getProviderConnection();
         mockJMSConnection.injectConnectionError(new JMSException("Some non-fatal error"));
 
         assertTrue(signal.await(10, TimeUnit.SECONDS));
@@ -131,7 +131,7 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
         JmsPoolSession wrapperSession1 = (JmsPoolSession) session1;
         JmsPoolSession wrapperSession2 = (JmsPoolSession) session2;
 
-        assertNotSame(wrapperSession1.getSession(), wrapperSession2.getSession());
+        assertNotSame(wrapperSession1.getProviderSession(), wrapperSession2.getProviderSession());
     }
 
     @Test
@@ -167,7 +167,7 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
         JmsPoolSession wrapperSession1 = (JmsPoolSession) session1;
         JmsPoolSession wrapperSession2 = (JmsPoolSession) session2;
 
-        assertNotSame(wrapperSession1.getSession(), wrapperSession2.getSession());
+        assertNotSame(wrapperSession1.getProviderSession(), wrapperSession2.getProviderSession());
     }
 
     @Test
@@ -235,7 +235,7 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
             JmsPoolSession wrapperSession1 = (JmsPoolSession) session1;
             JmsPoolSession wrapperSession2 = (JmsPoolSession) session2;
 
-            assertNotSame(wrapperSession1.getSession(), wrapperSession2.getSession());
+            assertNotSame(wrapperSession1.getProviderSession(), wrapperSession2.getProviderSession());
         }
     }
 
@@ -406,11 +406,11 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
         JmsPoolConnection connection1 = (JmsPoolConnection) cf.createConnection();
         JmsPoolConnection connection2 = (JmsPoolConnection) cf.createConnection();
 
-        assertSame(connection1.getConnection(), connection2.getConnection());
+        assertSame(connection1.getProviderConnection(), connection2.getProviderConnection());
 
         final Set<TemporaryQueue> deleted = new HashSet<>();
 
-        MockJMSConnection mockConnection = (MockJMSConnection) connection1.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection1.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -449,11 +449,11 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
         JmsPoolConnection connection1 = (JmsPoolConnection) cf.createConnection();
         JmsPoolConnection connection2 = (JmsPoolConnection) cf.createConnection();
 
-        assertSame(connection1.getConnection(), connection2.getConnection());
+        assertSame(connection1.getProviderConnection(), connection2.getProviderConnection());
 
         final Set<TemporaryTopic> deleted = new HashSet<>();
 
-        MockJMSConnection mockConnection = (MockJMSConnection) connection1.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection1.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -491,7 +491,7 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
     public void testConnectionIgnoresDeleteTempDestinationErrorOnClose() throws JMSException {
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
 
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -534,7 +534,7 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
         Queue queue = session.createQueue(getTestName());
         MessageProducer producer = session.createProducer(queue);
 
-        MockJMSConnection mockJMSConnection = (MockJMSConnection) ((JmsPoolConnection) connection).getConnection();
+        MockJMSConnection mockJMSConnection = (MockJMSConnection) ((JmsPoolConnection) connection).getProviderConnection();
         mockJMSConnection.injectConnectionError(new JMSException("Some non-fatal error"));
 
         assertTrue(failed.await(15, TimeUnit.SECONDS));
@@ -576,7 +576,7 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
         Queue queue = session.createQueue(getTestName());
         MessageProducer producer = session.createProducer(queue);
 
-        MockJMSConnection mockJMSConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockJMSConnection = (MockJMSConnection) connection.getProviderConnection();
         mockJMSConnection.injectConnectionError(new JMSException("Some non-fatal error"));
 
         assertTrue(failed.await(15, TimeUnit.SECONDS));
@@ -591,10 +591,45 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
         final JmsPoolConnection connection2 = (JmsPoolConnection) cf.createConnection();
 
         assertNotSame(connection, connection2);
-        assertSame(connection.getConnection(), connection2.getConnection());
+        assertSame(connection.getProviderConnection(), connection2.getProviderConnection());
         LOG.info("Fetched new connection from the pool: {}", connection2);
         session = connection2.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
         connection2.close();
+    }
+
+    public void testUniqueExceptionListenersGetsNotified() throws Exception {
+        final CountDownLatch signal1 = new CountDownLatch(1);
+        final CountDownLatch signal2 = new CountDownLatch(1);
+
+        Connection connection1 = cf.createConnection();
+        Connection connection2 = cf.createConnection();
+
+        connection1.setExceptionListener(new ExceptionListener() {
+
+            @Override
+            public void onException(JMSException exception) {
+                LOG.info("ExceptionListener 1 called with error: {}", exception.getMessage());
+                signal1.countDown();
+            }
+        });
+
+        connection2.setExceptionListener(new ExceptionListener() {
+
+            @Override
+            public void onException(JMSException exception) {
+                LOG.info("ExceptionListener 2 called with error: {}", exception.getMessage());
+                signal2.countDown();
+            }
+        });
+
+        assertNotNull(connection1.getExceptionListener());
+        assertNotNull(connection2.getExceptionListener());
+
+        MockJMSConnection mockJMSConnection = (MockJMSConnection) ((JmsPoolConnection) connection1).getProviderConnection();
+        mockJMSConnection.injectConnectionError(new JMSException("Some non-fatal error"));
+
+        assertTrue(signal1.await(5, TimeUnit.SECONDS));
+        assertTrue(signal2.await(5, TimeUnit.SECONDS));
     }
 }

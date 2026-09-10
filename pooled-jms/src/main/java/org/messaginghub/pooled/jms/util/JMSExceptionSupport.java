@@ -48,6 +48,8 @@ import jakarta.jms.TransactionRolledBackRuntimeException;
  */
 public final class JMSExceptionSupport {
 
+    private JMSExceptionSupport() {}
+
     /**
      * Creates or passes through a JMSException to be thrown to the client.
      *
@@ -68,8 +70,8 @@ public final class JMSExceptionSupport {
             return (JMSException) cause;
         }
 
-        if (cause.getCause() instanceof JMSException) {
-            return (JMSException) cause.getCause();
+        if (cause.getCause() instanceof JMSException actualCause) {
+            return actualCause;
         }
 
         if (message == null || message.isEmpty()) {
@@ -80,8 +82,9 @@ public final class JMSExceptionSupport {
         }
 
         final JMSException exception = new JMSException(message);
-        if (cause instanceof Exception) {
-            exception.setLinkedException((Exception) cause);
+
+        if (cause instanceof Exception causeEx) {
+            exception.setLinkedException(causeEx);
         }
 
         exception.initCause(cause);
@@ -120,18 +123,19 @@ public final class JMSExceptionSupport {
      * @return a MessageEOFException instance.
      */
     public static MessageEOFException createMessageEOFException(Throwable cause) {
-    	if (cause instanceof MessageEOFException) {
-    		return (MessageEOFException) cause;
-    	}
+        if (cause instanceof MessageEOFException match) {
+            return match;
+        }
 
-    	String message = cause.getMessage();
+        String message = cause.getMessage();
         if (message == null || message.length() == 0) {
             message = cause.toString();
         }
 
         final MessageEOFException exception = new MessageEOFException(message);
-        if (cause instanceof Exception) {
-            exception.setLinkedException((Exception) cause);
+
+        if (cause instanceof Exception causeEx) {
+            exception.setLinkedException(causeEx);
         }
 
         exception.initCause(cause);
@@ -153,18 +157,19 @@ public final class JMSExceptionSupport {
      * @return a MessageEOFException instance.
      */
     public static MessageFormatException createMessageFormatException(Throwable cause) {
-    	if (cause instanceof MessageFormatException) {
-    		return (MessageFormatException) cause;
-    	}
+        if (cause instanceof MessageFormatException match) {
+            return match;
+        }
 
-    	String message = cause.getMessage();
+        String message = cause.getMessage();
         if (message == null || message.length() == 0) {
             message = cause.toString();
         }
 
         final MessageFormatException exception = new MessageFormatException(message);
-        if (cause instanceof Exception) {
-            exception.setLinkedException((Exception) cause);
+
+        if (cause instanceof Exception causeEx) {
+            exception.setLinkedException(causeEx);
         }
 
         exception.initCause(cause);
@@ -186,9 +191,9 @@ public final class JMSExceptionSupport {
      * @return a ResourceAllocationException instance.
      */
     public static ResourceAllocationException createResourceAllocationException(Throwable cause) {
-    	if (cause instanceof ResourceAllocationException) {
-    		return (ResourceAllocationException) cause;
-    	}
+        if (cause instanceof ResourceAllocationException match) {
+            return match;
+        }
 
         String message = cause.getMessage();
         if (message == null || message.length() == 0) {
@@ -196,8 +201,9 @@ public final class JMSExceptionSupport {
         }
 
         final ResourceAllocationException exception = new ResourceAllocationException(message);
-        if (cause instanceof Exception) {
-            exception.setLinkedException((Exception) cause);
+
+        if (cause instanceof Exception causeEx) {
+            exception.setLinkedException(causeEx);
         }
 
         exception.initCause(cause);
@@ -218,10 +224,10 @@ public final class JMSExceptionSupport {
         JMSRuntimeException result = null;
         JMSException source = null;
 
-        if (!(exception instanceof JMSException)) {
-            throw new JMSRuntimeException(exception.getMessage(), null, exception);
+        if (exception instanceof JMSException jmsException) {
+            source = jmsException;
         } else {
-            source = (JMSException) exception;
+            throw new JMSRuntimeException(exception.getMessage(), null, exception);
         }
 
         if (source instanceof IllegalStateException) {

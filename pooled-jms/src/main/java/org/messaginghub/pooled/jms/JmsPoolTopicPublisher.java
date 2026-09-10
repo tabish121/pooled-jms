@@ -16,21 +16,22 @@
  */
 package org.messaginghub.pooled.jms;
 
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
-import jakarta.jms.Destination;
+import org.messaginghub.pooled.jms.internal.JmsPoolMessageProducerProxy;
+
 import jakarta.jms.JMSException;
 import jakarta.jms.Message;
 import jakarta.jms.Topic;
 import jakarta.jms.TopicPublisher;
 
 /**
- * A {@link TopicPublisher} instance that is created and managed by a PooledConnection.
+ * A {@link TopicPublisher} instance that is created and managed by a pooled session.
  */
 public class JmsPoolTopicPublisher extends JmsPoolMessageProducer implements TopicPublisher, AutoCloseable {
 
-    public JmsPoolTopicPublisher(JmsPoolSession session, TopicPublisher messageProducer, Destination destination, AtomicInteger refCount) throws JMSException {
-        super(session, messageProducer, destination, refCount);
+    JmsPoolTopicPublisher(JmsPoolMessageProducerProxy messageProducer, Topic destination, Consumer<JmsPoolMessageProducer> onClose) throws JMSException {
+        super(messageProducer, destination, onClose);
     }
 
     @Override
@@ -61,9 +62,5 @@ public class JmsPoolTopicPublisher extends JmsPoolMessageProducer implements Top
     @Override
     public String toString() {
         return getClass().getSimpleName() + " { " + getDelegate() + " }";
-    }
-
-    public TopicPublisher getTopicPublisher() throws JMSException {
-        return (TopicPublisher) getMessageProducer();
     }
 }

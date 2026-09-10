@@ -16,21 +16,22 @@
  */
 package org.messaginghub.pooled.jms;
 
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
-import jakarta.jms.Destination;
+import org.messaginghub.pooled.jms.internal.JmsPoolMessageProducerProxy;
+
 import jakarta.jms.JMSException;
 import jakarta.jms.Message;
 import jakarta.jms.Queue;
 import jakarta.jms.QueueSender;
 
 /**
- * {@link QueueSender} instance that is created and managed by the PooledConnection.
+ * A {@link QueueSender} instance that is created and managed by a pooled session.
  */
 public class JmsPoolQueueSender extends JmsPoolMessageProducer implements QueueSender, AutoCloseable {
 
-    public JmsPoolQueueSender(JmsPoolSession session, QueueSender messageProducer, Destination destination, AtomicInteger refCount) throws JMSException {
-        super(session, messageProducer, destination, refCount);
+    JmsPoolQueueSender(JmsPoolMessageProducerProxy messageProducer, Queue destination, Consumer<JmsPoolMessageProducer> onClose) throws JMSException {
+        super(messageProducer, destination, onClose);
     }
 
     @Override
@@ -51,9 +52,5 @@ public class JmsPoolQueueSender extends JmsPoolMessageProducer implements QueueS
     @Override
     public String toString() {
         return getClass().getSimpleName() + " { " + getDelegate() + " }";
-    }
-
-    public QueueSender getQueueSender() throws JMSException {
-        return (QueueSender) getMessageProducer();
     }
 }

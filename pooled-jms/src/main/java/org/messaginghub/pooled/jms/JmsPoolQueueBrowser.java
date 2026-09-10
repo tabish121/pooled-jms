@@ -17,7 +17,10 @@
 package org.messaginghub.pooled.jms;
 
 import java.util.Enumeration;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.function.Consumer;
+
+import org.messaginghub.pooled.jms.internal.JmsPoolQueueBrowserProxy;
 
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
@@ -29,63 +32,68 @@ import jakarta.jms.QueueBrowser;
  */
 public class JmsPoolQueueBrowser implements QueueBrowser, AutoCloseable {
 
-    private final AtomicBoolean closed = new AtomicBoolean();
+    private static final AtomicIntegerFieldUpdater<JmsPoolQueueBrowser> CLOSED_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(JmsPoolQueueBrowser.class, "closed");
 
-    private final JmsPoolSession session;
-    private final QueueBrowser delegate;
+    private final JmsPoolQueueBrowserProxy queueBrowser;
+    private final Consumer<JmsPoolQueueBrowser> onClose;
 
-    /**
-     * Wraps the QueueBrowser.
-     *
-     * @param session
-     * 		the pooled session that created this object.
-     * @param delegate
-     * 		the created QueueBrowser to wrap.
-     */
-    public JmsPoolQueueBrowser(JmsPoolSession session, QueueBrowser delegate) {
-        this.session = session;
-        this.delegate = delegate;
+    private volatile int closed;
+
+    JmsPoolQueueBrowser(JmsPoolQueueBrowserProxy delegate, Consumer<JmsPoolQueueBrowser> onClose) {
+        this.queueBrowser = delegate;
+        this.onClose = onClose;
     }
 
     @Override
     public Queue getQueue() throws JMSException {
         checkClosed();
-        return delegate.getQueue();
+        return queueBrowser.getQueue();
     }
 
     @Override
     public String getMessageSelector() throws JMSException {
         checkClosed();
-        return delegate.getMessageSelector();
+        return queueBrowser.getMessageSelector();
     }
 
     @Override
     public Enumeration<?> getEnumeration() throws JMSException {
         checkClosed();
-        return delegate.getEnumeration();
+        return queueBrowser.getEnumeration();
     }
 
     @Override
     public void close() throws JMSException {
-        if (closed.compareAndSet(false, true)) {
-            // ensure session removes browser from it's list of managed resources.
-            session.onQueueBrowserClose(this);
-            delegate.close();
+        if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
+            try {
+                queueBrowser.close();
+            } finally {
+                onClose.accept(this);
+            }
         }
     }
 
     @Override
     public String toString() {
-        return getClass().getSimpleName() + " { " + delegate + " }";
+        return getClass().getSimpleName() + " { " + queueBrowser + " }";
     }
 
-    public QueueBrowser getQueueBrowser() throws JMSException {
+    /**
+     * Provides access to the wrapped JMS {@link QueueBrowser} and is meant primarily as a
+     * test point and the application logic should not depend on this method.
+     *
+     * @return the wrapped JMS {@link QueueBrowser}.
+     *
+     * @throws JMSException if an error occurs while accessing the wrapped resource.
+     */
+    QueueBrowser getProviderQueueBrowser() throws JMSException {
         checkClosed();
-        return delegate;
+        return queueBrowser.getProviderQueueBrowser();
     }
 
     private void checkClosed() throws IllegalStateException {
-        if (closed.get()) {
+        if (closed != 0) {
             throw new IllegalStateException("The QueueBrowser is closed");
         }
     }

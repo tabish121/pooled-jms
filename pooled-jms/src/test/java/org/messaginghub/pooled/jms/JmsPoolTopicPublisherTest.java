@@ -24,6 +24,13 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.messaginghub.pooled.jms.mock.MockJMSConnection;
+import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
+import org.messaginghub.pooled.jms.mock.MockJMSMessageProducer;
+import org.messaginghub.pooled.jms.mock.MockJMSSession;
+
 import jakarta.jms.DeliveryMode;
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
@@ -33,14 +40,6 @@ import jakarta.jms.TextMessage;
 import jakarta.jms.Topic;
 import jakarta.jms.TopicPublisher;
 import jakarta.jms.TopicSession;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import org.messaginghub.pooled.jms.mock.MockJMSConnection;
-import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
-import org.messaginghub.pooled.jms.mock.MockJMSMessageProducer;
-import org.messaginghub.pooled.jms.mock.MockJMSSession;
-import org.messaginghub.pooled.jms.mock.MockJMSTopicPublisher;
 
 /**
  * Tests for the JMS Pool TopicPublisher wrapper.
@@ -83,13 +82,13 @@ public class JmsPoolTopicPublisherTest extends JmsPoolTestSupport {
         Topic topic = session.createTemporaryTopic();
         JmsPoolTopicPublisher publisher = (JmsPoolTopicPublisher) session.createPublisher(topic);
 
-        assertNotNull(publisher.getTopicPublisher());
-        assertTrue(publisher.getTopicPublisher() instanceof MockJMSTopicPublisher);
+        assertNotNull(publisher.getProviderMessageProducer());
+        assertTrue(publisher.getProviderMessageProducer() instanceof MockJMSMessageProducer);
 
         publisher.close();
 
         try {
-            publisher.getTopicPublisher();
+            publisher.getProviderMessageProducer();
             fail("Cannot read state on closed publisher");
         } catch (IllegalStateException ise) {}
     }
@@ -102,7 +101,7 @@ public class JmsPoolTopicPublisherTest extends JmsPoolTestSupport {
         TopicPublisher publisher = session.createPublisher(topic);
 
         final AtomicBoolean published = new AtomicBoolean();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -125,7 +124,7 @@ public class JmsPoolTopicPublisherTest extends JmsPoolTestSupport {
         TopicPublisher publisher = session.createPublisher(null);
 
         final AtomicBoolean published = new AtomicBoolean();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -161,7 +160,7 @@ public class JmsPoolTopicPublisherTest extends JmsPoolTestSupport {
         TopicPublisher publisher = session.createPublisher(topic);
 
         final AtomicBoolean published = new AtomicBoolean();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
@@ -187,7 +186,7 @@ public class JmsPoolTopicPublisherTest extends JmsPoolTestSupport {
         TopicPublisher publisher = session.createPublisher(null);
 
         final AtomicBoolean published = new AtomicBoolean();
-        MockJMSConnection mockConnection = (MockJMSConnection) connection.getConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
         mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
 
             @Override
