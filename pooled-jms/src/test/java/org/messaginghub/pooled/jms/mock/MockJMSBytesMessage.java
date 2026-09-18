@@ -24,11 +24,11 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.util.Arrays;
 
+import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
+
 import jakarta.jms.BytesMessage;
 import jakarta.jms.JMSException;
 import jakarta.jms.MessageFormatException;
-
-import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
 
 /**
  * Mock JMS BytesMessage implementation.

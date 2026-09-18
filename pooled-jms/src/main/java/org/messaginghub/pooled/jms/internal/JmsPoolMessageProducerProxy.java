@@ -42,7 +42,7 @@ public class JmsPoolMessageProducerProxy implements MessageProducer, TopicPublis
     private static final AtomicIntegerFieldUpdater<JmsPoolMessageProducerProxy> CLOSED_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(JmsPoolMessageProducerProxy.class, "closed");
 
-    private final JmsPoolSessionProxy session;
+    private final JmsPoolAbstractSessionProxy<?> session;
     private final MessageProducer producer;
     private final Destination destination;
     private final BiConsumer<JmsPoolMessageProducerProxy, Destination> onClose;
@@ -51,7 +51,7 @@ public class JmsPoolMessageProducerProxy implements MessageProducer, TopicPublis
 
     private volatile int closed;
 
-    JmsPoolMessageProducerProxy(JmsPoolSessionProxy session,
+    JmsPoolMessageProducerProxy(JmsPoolAbstractSessionProxy<?> session,
                                 MessageProducer producer,
                                 Destination destination,
                                 Referenced referenced,

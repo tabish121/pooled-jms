@@ -35,7 +35,7 @@ import jakarta.jms.XATopicSession;
  * <p>
  * Only JMS session instances created from an {@link XAConnection} type will implement {@link XASession}.
  */
-public class JmsPoolXASession extends JmsPoolSession implements XASession, XATopicSession, XAQueueSession {
+public class JmsPoolXASession extends JmsPoolAbstractSession implements XASession, XATopicSession, XAQueueSession {
 
     private boolean inXATransaction;
 
@@ -95,7 +95,8 @@ public class JmsPoolXASession extends JmsPoolSession implements XASession, XATop
 
     @Override
     protected JmsPoolXASessionProxy safeGetSessionProxy() throws JMSException {
-        return (JmsPoolXASessionProxy) super.safeGetSessionProxy();
+        checkClosed();
+        return (JmsPoolXASessionProxy) session;
     }
 
     /**

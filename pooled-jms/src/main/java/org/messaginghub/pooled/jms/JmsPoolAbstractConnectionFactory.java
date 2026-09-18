@@ -612,7 +612,7 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstract
      *
      * @throws JMSException if an error occurs while creating the new {@link Connection} instance.
      */
-    protected abstract JmsPoolConnection newJmsPoolConnection(String username, String password) throws JMSException;
+    protected abstract JmsPoolAbstractConnection newJmsPoolConnection(String username, String password) throws JMSException;
 
     /**
      * Allows subclasses to create an appropriate JmsPoolJMSContext wrapper for the newly
