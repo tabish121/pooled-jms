@@ -476,7 +476,9 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstract
      * by the {@link #setBlockIfSessionPoolIsFull(boolean)} property.
      * <p>
      * By default the timeout defaults to -1 and a blocked call to create a Session will
-     * wait indefinitely for a new {@link Session}
+     * wait indefinitely for a new {@link Session}. A value of zero for the timeout is equivalent
+     * to having no timeout and the session create call will not block if there are no idle
+     * sessions available.
      *
      * @param blockIfSessionPoolIsFullTimeout
      * 		if blockIfSessionPoolIsFullTimeout is true then use this setting
@@ -612,7 +614,7 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstract
      *
      * @throws JMSException if an error occurs while creating the new {@link Connection} instance.
      */
-    protected abstract JmsPoolConnection newJmsPoolConnection(String username, String password) throws JMSException;
+    protected abstract JmsPoolAbstractConnection newJmsPoolConnection(String username, String password) throws JMSException;
 
     /**
      * Allows subclasses to create an appropriate JmsPoolJMSContext wrapper for the newly

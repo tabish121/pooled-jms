@@ -50,7 +50,7 @@ import jakarta.jms.XAConnectionFactory;
  * @param <CF> The type of the implementation connection proxy factory
  * @param <CP> The type of the connection proxy created by this factory
  */
-public abstract class JmsPoolAbstractConnectionProxyFactory<CF, CP extends JmsPoolConnectionProxy> {
+public abstract class JmsPoolAbstractConnectionProxyFactory<CF, CP extends JmsPoolAbstractConnectionProxy<?, ?>> {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -559,7 +559,7 @@ public abstract class JmsPoolAbstractConnectionProxyFactory<CF, CP extends JmsPo
 
                     @Override
                     public void destroyObject(JmsPoolConnectionKey connectionKey, PooledObject<CP> pooledObject) throws Exception {
-                        final JmsPoolConnectionProxy connection = pooledObject.getObject();
+                        final CP connection = pooledObject.getObject();
 
                         try {
                             LOG.trace("Destroying connection: {}", connection);

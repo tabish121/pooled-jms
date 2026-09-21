@@ -16,9 +16,11 @@
  */
 package org.messaginghub.pooled.jms.internal;
 
+import java.util.function.Consumer;
+
 import javax.transaction.xa.XAResource;
 
-import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
+import org.messaginghub.pooled.jms.util.JMSVersionSupport;
 
 import jakarta.jms.JMSException;
 import jakarta.jms.QueueSession;
@@ -28,12 +30,16 @@ import jakarta.jms.XAQueueSession;
 import jakarta.jms.XASession;
 import jakarta.jms.XATopicSession;
 
-public class JmsPoolXASessionProxy extends JmsPoolSessionProxy implements XASession, XATopicSession, XAQueueSession {
+public class JmsPoolXASessionProxy extends JmsPoolAbstractSessionProxy<JmsPoolXASessionProxy> implements XASession, XATopicSession, XAQueueSession {
 
     private final XASession session;
 
-    JmsPoolXASessionProxy(JmsPoolXAConnectionProxy connection, JmsPoolSessionKey key, XASession session, GenericKeyedObjectPool<JmsPoolSessionKey, JmsPoolSessionProxy> sessionPool) {
-        super(connection, key, session, sessionPool);
+    JmsPoolXASessionProxy(JmsPoolConnectionConfiguration configuration,
+                          JMSVersionSupport versionSupport,
+                          XASession session,
+                          Consumer<JmsPoolXASessionProxy> onSessionClosed,
+                          Consumer<JmsPoolXASessionProxy> onSessionDestroyed) {
+        super(configuration, versionSupport, session, onSessionClosed, onSessionDestroyed);
 
         this.session = session;
     }
@@ -60,5 +66,10 @@ public class JmsPoolXASessionProxy extends JmsPoolSessionProxy implements XASess
     public XAResource getXAResource() {
         checkClosedRuntimeEx();
         return session.getXAResource();
+    }
+
+    @Override
+    protected JmsPoolXASessionProxy self() {
+        return this;
     }
 }

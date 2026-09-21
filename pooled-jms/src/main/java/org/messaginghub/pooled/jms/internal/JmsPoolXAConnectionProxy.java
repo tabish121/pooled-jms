@@ -16,7 +16,7 @@
  */
 package org.messaginghub.pooled.jms.internal;
 
-import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
+import java.util.function.Consumer;
 
 import jakarta.jms.JMSException;
 import jakarta.jms.Session;
@@ -27,34 +27,45 @@ import jakarta.jms.XASession;
  * An XA-aware shared connection from the pool. When a session is created and an XA transaction
  * is active, the session will automatically be enlisted in the current transaction.
  */
-public class JmsPoolXAConnectionProxy extends JmsPoolConnectionProxy implements XAConnection {
-
-    private final XAConnection connection;
+public class JmsPoolXAConnectionProxy extends JmsPoolAbstractConnectionProxy<JmsPoolXAConnectionProxy, JmsPoolXASessionProxy> implements XAConnection {
 
     public JmsPoolXAConnectionProxy(JmsPoolConnectionConfiguration configuration, XAConnection connection) {
         super(configuration, connection);
-
-        this.connection = connection;
     }
 
     @Override
-    protected XASession makeSession(JmsPoolSessionKey key) throws JMSException {
-        return (XASession) connection.createSession(key.isTransacted(), key.getAckMode());
+    public XASession createXASession() throws JMSException {
+        return doCreateSession(true, Session.SESSION_TRANSACTED);  // TODO what are the correct parameters?
     }
 
     @Override
-    protected JmsPoolXASessionProxy makeSessionProxy(JmsPoolConnectionProxy connection, JmsPoolSessionKey sessionKey, Session session,
-                                                     GenericKeyedObjectPool<JmsPoolSessionKey, JmsPoolSessionProxy> sessionPool) throws JMSException {
-        return new JmsPoolXASessionProxy((JmsPoolXAConnectionProxy) connection, sessionKey, makeSession(sessionKey), sessionPool);
+    protected JmsPoolXAConnectionProxy self() {
+        return this;
     }
 
     @Override
-    public JmsPoolXASessionProxy createSession(boolean transacted, int sessionMode) throws JMSException {
-        return (JmsPoolXASessionProxy) super.createSession(transacted, sessionMode);
+    XAConnection getConnection() {
+        return (XAConnection) connection;
     }
 
     @Override
-    public JmsPoolXASessionProxy createXASession() throws JMSException {
-        return (JmsPoolXASessionProxy) super.createSession(true, Session.SESSION_TRANSACTED); // TODO params ?
+    protected JmsPoolXASessionsPool createSessionPool(JmsPoolConnectionConfiguration configuration) {
+        return new JmsPoolXASessionsPool(configuration);
+    }
+
+    private class JmsPoolXASessionsPool extends JmsPoolAbstractSessionPool<JmsPoolXASessionProxy> {
+
+        JmsPoolXASessionsPool(JmsPoolConnectionConfiguration configuration) {
+            super(configuration);
+        }
+
+        @Override
+        protected JmsPoolXASessionProxy createSessionProxy(boolean transacted, int sessionMode,
+                                                           Consumer<JmsPoolXASessionProxy> onSessionClosed,
+                                                           Consumer<JmsPoolXASessionProxy> onSessionDestroyed) throws JMSException {
+            final XASession session = (XASession) getConnection().createSession(transacted, sessionMode);
+
+            return new JmsPoolXASessionProxy(getConfiguration(), getVersionSupport(), session, onSessionClosed, onSessionDestroyed);
+        }
     }
 }

@@ -54,6 +54,6 @@ public interface JmsPoolSessionEventListener {
      * @param session
      *      The PooledSession that has been closed.
      */
-    void onSessionClosed(JmsPoolSession session);
+    void onSessionClosed(Session session);
 
 }

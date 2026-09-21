@@ -423,7 +423,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
             }
 
             @Override
-            public void onSessionClosed(JmsPoolSession session) {
+            public void onSessionClosed(Session session) {
                 sessionClosed.countDown();
             }
         };
