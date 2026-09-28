@@ -49,26 +49,14 @@ final class JmsPoolSessionKey {
         if (this == obj) {
             return true;
         }
-        if (obj == null) {
-            return false;
-        }
-        if (getClass() != obj.getClass()) {
-            return false;
+
+        if (obj instanceof JmsPoolSessionKey other) {
+            if (hashCode == other.hashCode && ackMode == other.ackMode && transacted == other.transacted) {
+                return true;
+            }
         }
 
-        final JmsPoolSessionKey other = (JmsPoolSessionKey) obj;
-
-        if (hashCode != other.hashCode) {
-            return false;
-        }
-        if (ackMode != other.ackMode) {
-            return false;
-        }
-        if (transacted != other.transacted) {
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     @Override

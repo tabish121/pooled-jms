@@ -16,27 +16,29 @@
  */
 package org.messaginghub.pooled.jms.internal;
 
+import java.util.Objects;
+
 /**
  * A cache key for the connection details
  */
 final class JmsPoolConnectionKey {
 
-    private final String userName;
+    private final String username;
     private final String password;
     private final int hashCode;
 
     /**
      * Creates a new ConnectionKey using the supplied values.
      *
-     * @param userName
+     * @param username
      * 		The user name that this key represents
      * @param password
      * 		The password that this key represents
      */
-    public JmsPoolConnectionKey(String userName, String password) {
+    public JmsPoolConnectionKey(String username, String password) {
         this.password = password;
-        this.userName = userName;
-        this.hashCode = computeHash(userName, password);
+        this.username = username;
+        this.hashCode = computeHash(username, password);
     }
 
     public String getPassword() {
@@ -44,16 +46,12 @@ final class JmsPoolConnectionKey {
     }
 
     public String getUserName() {
-        return userName;
+        return username;
     }
 
     @Override
     public int hashCode() {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + ((password == null) ? 0 : password.hashCode());
-        result = prime * result + ((userName == null) ? 0 : userName.hashCode());
-        return result;
+        return hashCode;
     }
 
     @Override
@@ -61,48 +59,36 @@ final class JmsPoolConnectionKey {
         if (this == obj) {
             return true;
         }
-        if (obj == null) {
-            return false;
-        }
-        if (getClass() != obj.getClass()) {
-            return false;
-        }
 
-        final JmsPoolConnectionKey other = (JmsPoolConnectionKey) obj;
-
-        if (hashCode != other.hashCode) {
-            return false;
-        }
-
-        if (password == null) {
-            if (other.password != null) {
+        if (obj instanceof JmsPoolConnectionKey key) {
+            if (hashCode != key.hashCode) {
                 return false;
             }
-        } else if (!password.equals(other.password)) {
-            return false;
-        }
 
-        if (userName == null) {
-            if (other.userName != null) {
+            if (!Objects.equals(password, key.password)) {
                 return false;
             }
-        } else if (!userName.equals(other.userName)) {
-            return false;
+
+            if (!Objects.equals(username, key.username)) {
+                return false;
+            }
+
+            return true;
         }
 
-        return true;
+        return false;
     }
 
     @Override
     public String toString() {
-        return getClass().getSimpleName() + " { " + userName + " }";
+        return getClass().getSimpleName() + " { " + username + " }";
     }
 
-    private static int computeHash(String userName, String password) {
+    private static int computeHash(String username, String password) {
         final int prime = 31;
         int result = 1;
         result = prime * result + ((password == null) ? 0 : password.hashCode());
-        result = prime * result + ((userName == null) ? 0 : userName.hashCode());
+        result = prime * result + ((username == null) ? 0 : username.hashCode());
         return result;
     }
 }

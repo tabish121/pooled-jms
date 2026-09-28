@@ -104,7 +104,7 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
     public void testCreateXASession() throws Exception {
         when(txn.enlistResource(any())).thenReturn(true);
 
-        JmsPoolConnection connection = (JmsPoolConnection) xaCF.createConnection();
+        JmsPoolXAConnection connection = (JmsPoolXAConnection) xaCF.createConnection();
         XASession session = (XASession) connection.createSession();
 
         assertNotNull(session);
@@ -120,7 +120,7 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
     public void testCreateTopicSession() throws Exception {
         when(txn.enlistResource(any())).thenReturn(true);
 
-        JmsPoolConnection connection = (JmsPoolConnection) xaCF.createConnection();
+        JmsPoolXAConnection connection = (JmsPoolXAConnection) xaCF.createConnection();
         XASession session = (XASession) connection.createTopicSession(true, Session.SESSION_TRANSACTED);
 
         assertNotNull(session);
@@ -136,7 +136,7 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
     public void testCreateQueueSession() throws Exception {
         when(txn.enlistResource(any())).thenReturn(true);
 
-        JmsPoolConnection connection = (JmsPoolConnection) xaCF.createConnection();
+        JmsPoolXAConnection connection = (JmsPoolXAConnection) xaCF.createConnection();
         XASession session = (XASession) connection.createQueueSession(true, Session.SESSION_TRANSACTED);
 
         assertNotNull(session);
@@ -150,7 +150,7 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
 
     @Test
     public void testCreateXASessionFailsOnAddSynchronization() throws Exception {
-        JmsPoolConnection connection = (JmsPoolConnection) xaCF.createConnection();
+        JmsPoolXAConnection connection = (JmsPoolXAConnection) xaCF.createConnection();
 
         doThrow(RollbackException.class).when(txn).registerSynchronization(any());
         when(txn.enlistResource(any())).thenReturn(true);
@@ -163,7 +163,7 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
 
     @Test
     public void testCreateXASessionFailsOnAddSynchronizationXAConnection() throws Exception {
-        JmsPoolConnection connection = (JmsPoolConnection) xaCF.createXAConnection();
+        JmsPoolXAConnection connection = (JmsPoolXAConnection) xaCF.createXAConnection();
 
         doThrow(RollbackException.class).when(txn).registerSynchronization(any());
         when(txn.enlistResource(any())).thenReturn(true);
@@ -176,7 +176,7 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
 
     @Test
     public void testCreateXASessionFailsOnEnlist() throws Exception {
-        JmsPoolConnection connection = (JmsPoolConnection) xaCF.createConnection();
+        JmsPoolXAConnection connection = (JmsPoolXAConnection) xaCF.createConnection();
 
         when(txn.enlistResource(any())).thenReturn(false);
 
@@ -188,7 +188,7 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
 
     @Test
     public void testCreateXASessionFailsOnEnlistXAConnection() throws Exception {
-        JmsPoolConnection connection = (JmsPoolConnection) xaCF.createXAConnection();
+        JmsPoolXAConnection connection = (JmsPoolXAConnection) xaCF.createXAConnection();
 
         when(txn.enlistResource(any())).thenReturn(false);
 

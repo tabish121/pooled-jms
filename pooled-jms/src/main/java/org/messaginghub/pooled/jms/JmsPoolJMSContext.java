@@ -54,19 +54,19 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
      */
     public static boolean DEFAULT_JMS_CONTEXT_AUTO_START = true;
 
-    private final JmsPoolConnection connection;
+    private final JmsPoolAbstractConnection connection;
     private final AtomicLong connectionRefCount;
     private final int sessionMode;
 
-    private volatile JmsPoolSession session;
+    private volatile JmsPoolAbstractSession session;
     private JmsPoolMessageProducer sharedProducer;
     private boolean autoStart = DEFAULT_JMS_CONTEXT_AUTO_START;
 
-    JmsPoolJMSContext(JmsPoolConnection connection, int sessionMode) {
+    JmsPoolJMSContext(JmsPoolAbstractConnection connection, int sessionMode) {
         this(connection, sessionMode, new AtomicLong(1));
     }
 
-    private JmsPoolJMSContext(JmsPoolConnection connection, int sessionMode, AtomicLong connectionRefCount) {
+    private JmsPoolJMSContext(JmsPoolAbstractConnection connection, int sessionMode, AtomicLong connectionRefCount) {
         this.connection = connection;
         this.sessionMode = sessionMode;
         this.connectionRefCount = connectionRefCount;
@@ -504,12 +504,12 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     //----- Internal implementation methods ----------------------------------//
 
-    JmsPoolSession getSession() {
+    JmsPoolAbstractSession getSession() {
         if (session == null) {
             synchronized (this) {
                 if (session == null) {
                     try {
-                        session = (JmsPoolSession) connection.createSession(getSessionMode());
+                        session = (JmsPoolAbstractSession) connection.createSession(getSessionMode());
                     } catch (JMSException jmse) {
                         throw JMSExceptionSupport.createRuntimeException(jmse);
                     }

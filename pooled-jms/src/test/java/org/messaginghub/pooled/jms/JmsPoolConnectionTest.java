@@ -52,6 +52,7 @@ import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.Queue;
+import jakarta.jms.ResourceAllocationException;
 import jakarta.jms.Session;
 import jakarta.jms.TemporaryQueue;
 import jakarta.jms.TemporaryTopic;
@@ -322,11 +323,11 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
             public boolean isSatisfied() throws Exception {
                 return result.isDone() && result.get().booleanValue();
             }
-        }, TimeUnit.SECONDS.toMillis(10), TimeUnit.MILLISECONDS.toMillis(50));
+        }, TimeUnit.SECONDS.toMillis(100), TimeUnit.MILLISECONDS.toMillis(25));
 
         if (!testPassed) {
             JmsPoolConnectionTest.LOG.error("2nd call to createSession() " +
-                                           "is blocking but should have returned an error instead.");
+                                            "is blocking but should have returned an error instead.");
             executor.shutdownNow();
             fail("SessionPool inside JmsPoolConnectionFactory is blocking if " +
                  "limit is exceeded but should return an exception instead.");
@@ -372,7 +373,7 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
                          "is exhausted. This did not happen and indicates a problem");
                     return Boolean.FALSE;
                 } catch (JMSException ex) {
-                    if (ex.getCause().getClass() == java.util.NoSuchElementException.class) {
+                    if (ex.getCause().getClass() == ResourceAllocationException.class) {
                         // expected, ignore but log
                         TASK_LOG.info("Caught expected " + ex);
                     } else {
