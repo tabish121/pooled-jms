@@ -24,7 +24,9 @@ import org.messaginghub.pooled.jms.internal.JmsPoolXAConnectionProxy;
 import org.messaginghub.pooled.jms.internal.JmsPoolXASessionProxy;
 
 import jakarta.jms.JMSException;
+import jakarta.jms.QueueSession;
 import jakarta.jms.Session;
+import jakarta.jms.TopicSession;
 import jakarta.jms.XAConnection;
 import jakarta.jms.XAQueueConnection;
 import jakarta.jms.XAQueueSession;
@@ -40,7 +42,7 @@ import jakarta.transaction.TransactionManager;
 /**
  * {@link XAConnection} pooled connection wrapper for shared connections from the pool.
  */
-public class JmsPoolXAConnection extends JmsPoolConnection implements XAConnection, XATopicConnection, XAQueueConnection, AutoCloseable {
+public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XAConnection, XATopicConnection, XAQueueConnection, AutoCloseable {
 
     private final TransactionManager transactionManager;
 
@@ -78,6 +80,16 @@ public class JmsPoolXAConnection extends JmsPoolConnection implements XAConnecti
     @Override
     public XASession createXASession() throws JMSException {
         return doCreateSession(false, Session.AUTO_ACKNOWLEDGE);
+    }
+
+    @Override
+    protected TopicSession doCreateTopicSession(boolean transacted, int ackMode) throws JMSException {
+        return doCreateSession(transacted, ackMode);
+    }
+
+    @Override
+    protected QueueSession doCreateQueueSession(boolean transacted, int ackMode) throws JMSException {
+        return doCreateSession(transacted, ackMode);
     }
 
     @Override
@@ -141,7 +153,7 @@ public class JmsPoolXAConnection extends JmsPoolConnection implements XAConnecti
     }
 
     @Override
-    protected JmsPoolXASession afterSessionCreated(JmsPoolSession session) throws JMSException {
+    protected JmsPoolXASession afterSessionCreated(JmsPoolAbstractSession session) throws JMSException {
         return (JmsPoolXASession) super.afterSessionCreated(session);
     }
 

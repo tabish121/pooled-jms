@@ -47,7 +47,7 @@ import jakarta.jms.TextMessage;
  */
 public class JmsPoolJMSProducer implements JMSProducer {
 
-    private final JmsPoolSession session;
+    private final JmsPoolAbstractSession session;
     private final JmsPoolMessageProducer producer;
 
     private CompletionListener completionListener;
@@ -77,7 +77,7 @@ public class JmsPoolJMSProducer implements JMSProducer {
      * @param producer
      *      The shared MessageProducer owned by the parent Session.
      */
-    JmsPoolJMSProducer(JmsPoolSession session, JmsPoolMessageProducer producer) {
+    JmsPoolJMSProducer(JmsPoolAbstractSession session, JmsPoolMessageProducer producer) {
         this.session = session;
         this.producer = producer;
     }

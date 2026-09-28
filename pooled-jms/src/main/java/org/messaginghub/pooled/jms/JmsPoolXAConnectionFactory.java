@@ -205,8 +205,7 @@ public class JmsPoolXAConnectionFactory extends JmsPoolAbstractConnectionFactory
     }
 
     private void configFromJndiConf(Object rootContextName) {
-        if (rootContextName instanceof String) {
-            String name = (String) rootContextName;
+        if (rootContextName instanceof String name) {
             name = name.substring(0, name.lastIndexOf('/')) + "/conf" + name.substring(name.lastIndexOf('/'));
             try {
                 final InitialContext ctx = new InitialContext();
