@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.function.Consumer;
 
 import org.messaginghub.pooled.jms.util.JMSVersionSupport;
 import org.messaginghub.pooled.jms.util.ReferenceCounted;
@@ -63,6 +64,8 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
     private final JmsPoolConnectionConfiguration configuration;
     private final JMSVersionSupport versionSupport;
     private final JmsPoolAbstractSessionPool<SP> sessionPool;
+    private final Consumer<CP> onConnectionClosed;
+    private final Consumer<CP> onConnectionDestroyed;
 
     /**
      * Shared pooled JMS Connection that all subclasses may access directly.
@@ -74,12 +77,17 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
     private boolean hasExpired;
     private ExceptionListener connectionFactoryExceptionListener;
 
-    JmsPoolAbstractConnectionProxy(JmsPoolConnectionConfiguration configuration, Connection connection) {
+    JmsPoolAbstractConnectionProxy(JmsPoolConnectionConfiguration configuration,
+                                   Connection connection,
+                                   Consumer<CP> onConnectionClosed,
+                                   Consumer<CP> onConnectionDestroyed) {
         this.configuration = configuration;
         this.connection = connection;
         this.connectionId = connection.toString();
         this.versionSupport = new JMSVersionSupport(connection);
         this.sessionPool = createSessionPool(configuration);
+        this.onConnectionClosed = onConnectionClosed;
+        this.onConnectionDestroyed = onConnectionDestroyed;
 
         try {
             // Check if wrapped connection already had an exception listener and preserve it
@@ -129,11 +137,14 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
             try {
                 sessionPool.destroy();
             } catch (Exception ex) {
-                LOG.debug("Suppressed error from on destroy handler in connection proy.", ex);
+                LOG.debug("Suppressed error from on sesion pool destroy in connection proy.", ex);
             } finally {
                 try {
                     connection.close();
-                } catch (Exception e) {
+                } catch (Exception ex) {
+                    LOG.trace("Suppressed error from provider connection close in connection proy.", ex);
+                } finally {
+                    onConnectionDestroyed.accept(self());
                 }
             }
         }
@@ -147,11 +158,16 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
         if (!isClosed() && referenced.release()) {
             sessionPool.idle();
             becameIdleAt = System.currentTimeMillis();
+            onConnectionClosed.accept(self());
         }
     }
 
     public boolean isClosed() {
         return closed > 0;
+    }
+
+    public boolean isIdle() {
+        return !isClosed() && !referenced.isReferenced();
     }
 
     public Connection getProviderConnection() throws JMSException {

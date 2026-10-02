@@ -16,6 +16,8 @@
  */
 package org.messaginghub.pooled.jms.internal;
 
+import java.util.function.Consumer;
+
 import jakarta.jms.Connection;
 import jakarta.jms.ConnectionFactory;
 import jakarta.jms.JMSException;
@@ -46,12 +48,19 @@ public final class JmsPoolConnectionProxyFactory extends JmsPoolAbstractConnecti
     }
 
     @Override
-    protected JmsPoolConnectionProxy createConnectionProxy(JmsPoolConnectionConfiguration configuration, Connection connection) {
-        return new JmsPoolConnectionProxy(configuration, connection);
+    protected JmsPoolConnectionPool createConnectionPool() {
+        return new JmsPoolConnectionPool();
     }
 
-    @Override
-    protected Connection createProviderConnection(String userName, String password) throws JMSException {
-        return getConnectionFactory().createConnection(userName, password);
+    private class JmsPoolConnectionPool extends JmsPoolAbstractConnectionPool<JmsPoolConnectionProxy> {
+
+        @Override
+        protected JmsPoolConnectionProxy createConnectionProxy(String username, String password,
+                                                               Consumer<JmsPoolConnectionProxy> onConnectionClosed,
+                                                               Consumer<JmsPoolConnectionProxy> onConnectionDestroyed) throws JMSException {
+            final Connection connection = getConnectionFactory().createConnection(username, password);
+
+            return new JmsPoolConnectionProxy(getConfiguration().snapshot(), connection, onConnectionClosed, onConnectionDestroyed);
+        }
     }
 }

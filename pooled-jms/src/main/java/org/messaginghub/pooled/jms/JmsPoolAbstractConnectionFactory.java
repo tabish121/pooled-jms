@@ -19,7 +19,6 @@ package org.messaginghub.pooled.jms;
 import java.beans.ExceptionListener;
 import java.lang.invoke.MethodHandles;
 import java.util.Properties;
-import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import org.messaginghub.pooled.jms.internal.JmsPoolAbstractConnectionProxyFactory;
 import org.messaginghub.pooled.jms.internal.JmsPoolConnectionProxy;
@@ -29,6 +28,7 @@ import org.slf4j.LoggerFactory;
 
 import jakarta.jms.Connection;
 import jakarta.jms.ConnectionFactory;
+import jakarta.jms.IllegalStateException;
 import jakarta.jms.IllegalStateRuntimeException;
 import jakarta.jms.JMSContext;
 import jakarta.jms.JMSException;
@@ -39,58 +39,9 @@ import jakarta.jms.Session;
 import jakarta.jms.TopicConnection;
 import jakarta.jms.TopicConnectionFactory;
 
-/**
- * A JMS provider which pools Connection, Session and MessageProducer instances
- * so it can be used with tools like <a href="http://camel.apache.org/">Camel</a> or any other project
- * that is configured using JMS ConnectionFactory resources, connections, sessions and producers are
- * returned to a pool after use so that they can be reused later without having to undergo the cost
- * of creating them again.
- *
- * This pooling connection factory groups connections into groups based on the user name and password
- * used to create the connections along with a group for connections created without a user-name or a
- * password. The configuration for max connections applies to each group of connections individually
- * meaning to total number of connections can be greater than the configured if connections are created
- * for multiple users.
- *
- * <b>NOTE:</b> while this implementation does allow the creation of a collection of active consumers,
- * it does not 'pool' consumers. Pooling makes sense for connections, sessions and producers, which
- * are expensive to create and can remain idle a minimal cost. Consumers, on the other hand, are usually
- * just created at startup and left active, handling incoming messages as they come. When a consumer is
- * complete, it is best to close it rather than return it to a pool for later reuse: this is because,
- * even if a consumer is idle, the broker may keep delivering messages to the consumer's prefetch buffer,
- * where they'll get held until the consumer is active again.
- *
- * If you are creating a collection of consumers (for example, for multi-threaded message consumption), you
- * might want to consider using a lower prefetch value for each consumer (e.g. 10 or 20), to ensure that
- * all messages don't end up going to just one of the consumers. See this FAQ entry for more detail:
- * http://activemq.apache.org/i-do-not-receive-messages-in-my-second-consumer.html
- *
- * Optionally, one may configure the pool to examine and possibly evict objects as they sit idle in the
- * pool. This is performed by a "connection check" thread, which runs asynchronously. Caution should
- * be used when configuring this optional feature. Connection check runs contend with client threads for
- * access to resources in the pool, so if they run too frequently performance issues may result. The
- * connection check thread may be configured using the {@link JmsPoolAbstractConnectionFactory#setConnectionCheckInterval(long)}
- * method. By default the value is -1 which means no connection check thread will be run. Set to a
- * non-negative value to configure the connection check thread to run, the implementation may enforce
- * a minimum time between eviction checks.
- */
 public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstractConnectionProxyFactory<?, ?>> implements ConnectionFactory, QueueConnectionFactory, TopicConnectionFactory {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
-
-    @SuppressWarnings("rawtypes")
-    private static final AtomicIntegerFieldUpdater<JmsPoolAbstractConnectionFactory> STOPPED_UPDATER =
-        AtomicIntegerFieldUpdater.newUpdater(JmsPoolAbstractConnectionFactory.class, "stopped");
-
-    /**
-     * The default value controlling time between checks for idle connections in the pool.
-     */
-    public static final long DEFAULT_TIME_BETWEEN_EVICTION_RUNS = -1;
-
-    /**
-     * The default maximum number of connections to maintain in the connection pool.
-     */
-    public static final int DEFAULT_MAX_CONNECTIONS = 1;
 
     /**
      * The default value controlling if the connection pool uses its own JMS context instances or
@@ -99,7 +50,6 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstract
     public static final boolean DEFAULT_USE_PROVIDER_JMS_CONTEXT = false;
 
     private boolean useProviderJMSContext = DEFAULT_USE_PROVIDER_JMS_CONTEXT;
-    private volatile int stopped;
 
     /**
      * Creates the pooling connection factory in the started state but the application must configure
@@ -190,12 +140,11 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstract
      * prevents any new connection from being taken from the pool. Starting the factory will
      * enable taking new connections from the pool but does not allocate any new connections
      * when called.
+     *
+     * @throws IllegalStateException if the provider connection factory has not bee configured
      */
-    public synchronized void start() {
-        if (STOPPED_UPDATER.weakCompareAndSet(this, 1, 0)) {
-            LOG.debug("JMS pooled connection factory start method called, no action performed.");
-            getConnectionFactoryProxy().start();
-        }
+    public void start() throws IllegalStateException {
+        getConnectionFactoryProxy().start();
     }
 
     /**
@@ -205,17 +154,11 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstract
      * the pool regardless of them being loaned out at the time. The pool cannot be restarted
      * after a call to stop.
      */
-    public synchronized void stop() {
-        if (STOPPED_UPDATER.weakCompareAndSet(this, 0, 1)) {
-            final JmsPoolAbstractConnectionProxyFactory<?, ?> connectionProxyFactory = getConnectionFactoryProxy();
-
-            LOG.debug("Stopping the pooled connection factory, number of connections in pool = {}",
-                      connectionProxyFactory != null ? connectionProxyFactory.getNumConnections() : 0);
-            try {
-                connectionProxyFactory.stop();
-            } catch (Exception ignored) {
-                LOG.trace("Caught exception on close of the Connection pool during stop: ", ignored);
-            }
+    public void stop() {
+        try {
+            getConnectionFactoryProxy().stop();
+        } catch (Exception ignored) {
+            LOG.trace("Caught exception on close of the Connection pool during stop: ", ignored);
         }
     }
 
@@ -225,7 +168,7 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstract
      * @return <code>true</code> if the JMS connection pool is stopped at the time of this call.
      */
     public boolean isStopped() {
-        return stopped != 0;
+        return getConnectionFactoryProxy().isStopped();
     }
 
     /**
@@ -236,10 +179,8 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstract
      * possible for connections to remain in the pool after this method returns if it raced with
      * other threads calling a {@link #createConnection()} variant.
      */
-    public synchronized void clear() {
-        if (!isStopped()) {
-            getConnectionFactoryProxy().clear();
-        }
+    public void clear() {
+        getConnectionFactoryProxy().clear();
     }
 
     /**
@@ -248,11 +189,7 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstract
      * @return the number of Connections currently in the Pool if started, otherwise returns zero.
      */
     public int getNumConnections() {
-        if (isStopped()) {
-            return 0;
-        } else {
-            return getConnectionFactoryProxy().getNumConnections();
-        }
+        return getConnectionFactoryProxy().getNumConnections();
     }
 
     //----- Pooled Connection Configuration ----------------------------------//
