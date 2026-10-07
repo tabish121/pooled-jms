@@ -44,6 +44,41 @@ import jakarta.jms.XATopicConnection;
 import jakarta.jms.XATopicConnectionFactory;
 import jakarta.transaction.TransactionManager;
 
+/**
+ * A JMS provider which pools XA Connection, Session and MessageProducer instances so it can be
+ * used with tools like <a href="http://camel.apache.org/">Camel</a> or any other project that is
+ * configured using JMS {@link XAConnectionFactory} resources, connections, sessions and producers
+ * are returned to a pool after use so that they can be reused later without having to undergo the
+ * cost of creating them again.
+ *
+ * This pooling connection factory groups connections into groups based on the user name and password
+ * used to create the connections along with a group for connections created without a user-name or a
+ * password. The configuration for max connections applies to each group of connections individually
+ * meaning to total number of connections can be greater than the configured if connections are created
+ * for multiple users.
+ *
+ * <b>NOTE:</b> while this implementation does allow the creation of a collection of active consumers,
+ * it does not 'pool' consumers. Pooling makes sense for connections, sessions and producers, which
+ * are expensive to create and can remain idle a minimal cost. Consumers, on the other hand, are usually
+ * just created at startup and left active, handling incoming messages as they come. When a consumer is
+ * complete, it is best to close it rather than return it to a pool for later reuse: this is because,
+ * even if a consumer is idle, the broker may keep delivering messages to the consumer's prefetch buffer,
+ * where they'll get held until the consumer is active again.
+ *
+ * If you are creating a collection of consumers (for example, for multi-threaded message consumption), you
+ * might want to consider using a lower prefetch value for each consumer (e.g. 10 or 20), to ensure that
+ * all messages don't end up going to just one of the consumers. See this FAQ entry for more detail:
+ * http://activemq.apache.org/i-do-not-receive-messages-in-my-second-consumer.html
+ *
+ * Optionally, one may configure the pool to examine and possibly evict objects as they sit idle in the
+ * pool. This is performed by a "connection check" thread, which runs asynchronously. Caution should
+ * be used when configuring this optional feature. Connection check runs contend with client threads for
+ * access to resources in the pool, so if they run too frequently performance issues may result. The
+ * connection check thread may be configured using the {@link #setConnectionCheckInterval(long)}
+ * method. By default the value is -1 which means no connection check thread will be run. Set to a
+ * non-negative value to configure the connection check thread to run, the implementation may enforce
+ * a minimum time between eviction checks.
+ */
 public class JmsPoolXAConnectionFactory extends JmsPoolAbstractConnectionFactory<JmsPoolXAConnectionProxyFactory> implements ObjectFactory, Serializable, XAConnectionFactory, XAQueueConnectionFactory, XATopicConnectionFactory {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());

@@ -27,8 +27,10 @@ import jakarta.jms.Session;
  */
 public class JmsPoolConnectionProxy extends JmsPoolAbstractConnectionProxy<JmsPoolConnectionProxy, JmsPoolSessionProxy> {
 
-    JmsPoolConnectionProxy(JmsPoolConnectionConfiguration configuration, Connection connection) {
-        super(configuration, connection);
+    JmsPoolConnectionProxy(JmsPoolConnectionConfiguration configuration, Connection connection,
+                           Consumer<JmsPoolConnectionProxy> onConnectionClosed,
+                           Consumer<JmsPoolConnectionProxy> onConnectionDestroyed) {
+        super(configuration, connection, onConnectionClosed, onConnectionDestroyed);
     }
 
     @Override

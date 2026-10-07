@@ -29,8 +29,10 @@ import jakarta.jms.XASession;
  */
 public class JmsPoolXAConnectionProxy extends JmsPoolAbstractConnectionProxy<JmsPoolXAConnectionProxy, JmsPoolXASessionProxy> implements XAConnection {
 
-    public JmsPoolXAConnectionProxy(JmsPoolConnectionConfiguration configuration, XAConnection connection) {
-        super(configuration, connection);
+    public JmsPoolXAConnectionProxy(JmsPoolConnectionConfiguration configuration, XAConnection connection,
+                                    Consumer<JmsPoolXAConnectionProxy> onConnectionClosed,
+                                    Consumer<JmsPoolXAConnectionProxy> onConnectionDestroyed) {
+        super(configuration, connection, onConnectionClosed, onConnectionDestroyed);
     }
 
     @Override
