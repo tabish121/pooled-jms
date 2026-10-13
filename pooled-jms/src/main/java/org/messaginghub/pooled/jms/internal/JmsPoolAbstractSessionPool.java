@@ -16,12 +16,15 @@
  */
 package org.messaginghub.pooled.jms.internal;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
@@ -30,10 +33,11 @@ import jakarta.jms.ResourceAllocationException;
 /**
  * Base for the session pool used to manage loaned and free sessions
  */
-public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessionProxy<?>> {
+public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessionProxy<SP>> {
+
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final Map<JmsPoolSessionKey, JmsPoolKeyedSessionsPool> pools = new HashMap<>();
-
     private final JmsPoolConnectionConfiguration configuration;
 
     private boolean destroyed;
@@ -151,28 +155,17 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
         }
     }
 
-    protected void activateSession(SP sessioProxy) {
-        sessioProxy.open();
-    }
-
-    protected void destroySession(SP sessionProxy) {
-        sessionProxy.internalClose();
-    }
-
     protected abstract SP createSessionProxy(boolean transacted,
                                              int sessionMode,
-                                             Consumer<SP> onSessionClosed,
-                                             Consumer<SP> onSessionDestroyed) throws JMSException;
+                                             JmsPoolSessionProxyManager<SP> onSessionDestroyed) throws JMSException;
 
     // Expected to operate under the lock of the parent session pool
-    private class JmsPoolKeyedSessionsPool {
-
-        private static final Queue<?> EMPTY_QUEUE = new ArrayDeque<>(0);
+    private class JmsPoolKeyedSessionsPool implements JmsPoolSessionProxyManager<SP> {
 
         private final JmsPoolSessionKey sessionKey;
 
-        private Queue<SP> activeSessions;
-        private Queue<SP> idleSessions;
+        private final Queue<SP> activeSessions;
+        private final Queue<SP> idleSessions;
 
         JmsPoolKeyedSessionsPool(JmsPoolSessionKey sessionKey) {
             this.sessionKey = sessionKey;
@@ -192,42 +185,25 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
             return activeSessions.size();
         }
 
-        @SuppressWarnings("unchecked")
         public void idleAll() {
-            final Queue<SP> active = activeSessions;
-
-            activeSessions = (Queue<SP>) EMPTY_QUEUE;
-
-            try {
-                active.forEach(session -> {
-                    session.close();
-                });
-            } finally {
-                activeSessions = active;
-            }
+            idleSessions.addAll(activeSessions);
+            activeSessions.clear();
         }
 
-        @SuppressWarnings("unchecked")
         public void destroy() {
-            final Queue<SP> active = activeSessions;
-            final Queue<SP> idle = idleSessions;
-
-            activeSessions = (Queue<SP>) EMPTY_QUEUE;
-            idleSessions = (Queue<SP>) EMPTY_QUEUE;
-
-            active.forEach(session -> {
+            activeSessions.forEach(session -> {
                 try {
-                    session.destroy();
+                    session.internalClose();
                 } catch (Exception e) {}
             });
-            idle.forEach(session -> {
+            idleSessions.forEach(session -> {
                 try {
-                    session.destroy();
+                    session.internalClose();
                 } catch (Exception e) {}
             });
 
-            active.clear();
-            idle.clear();
+            activeSessions.clear();
+            idleSessions.clear();
 
             // Signal any waiters to wake up and see that the pool is now closed.
             JmsPoolAbstractSessionPool.this.notifyAll();
@@ -268,22 +244,16 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
                 final SP session;
 
                 if (idleSessions.isEmpty()) {
-                    session = createSessionProxy(sessionKey.isTransacted(),
-                                                 sessionKey.getAckMode(),
-                                                 this::onSessionClosed,
-                                                 this::onSessionDestroyed);
+                    session = createSessionProxy(sessionKey.isTransacted(), sessionKey.getAckMode(), this);
                 } else {
                     session = idleSessions.poll();
                 }
 
                 if (session.validateSession()) {
                     activeSessions.add(session);
-
-                    session.open();
-
                     return session;
                 } else {
-                    session.destroy();
+                    session.internalClose();
                 }
             }
 
@@ -292,7 +262,8 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
             throw new ResourceAllocationException("Unknown Error: Could not provide a JMS session from the pool.");
         }
 
-        protected void onSessionClosed(SP session) {
+        @Override
+        public SP releaseSession(SP session) {
             synchronized (JmsPoolAbstractSessionPool.this) {
                 // Check the returned session to try and detect closed while being
                 // returned and also check that the idle sessions queue isn't full.
@@ -301,7 +272,7 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
                 activeSessions.remove(session);
 
                 if (destroyed || !session.validateSession() || idleSessions.size() == getMaxIdleSessions()) {
-                    session.destroy();
+                    session.internalClose();
                 } else {
                     idleSessions.offer(session);
                 }
@@ -309,18 +280,27 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
                 // Signal waiters to check if a session can be taken now.
                 JmsPoolAbstractSessionPool.this.notifyAll();
             }
+
+            return session;
         }
 
-        protected void onSessionDestroyed(SP session) {
+        @Override
+        public SP closeSession(SP session) {
             synchronized (JmsPoolAbstractSessionPool.this) {
                 activeSessions.remove(session);
                 idleSessions.remove(session);
 
-                if (!destroyed) {
-                    // Signal waiters to check if a session can be taken now.
-                    JmsPoolAbstractSessionPool.this.notifyAll();
+                try {
+                    session.internalClose();
+                } catch (Exception e) {
+                    LOG.trace("Ingoered error on close of pooled session", e);
                 }
+
+                // Signal waiters to check if a session can be taken now.
+                JmsPoolAbstractSessionPool.this.notifyAll();
             }
+
+            return session;
         }
     }
 }

@@ -16,8 +16,6 @@
  */
 package org.messaginghub.pooled.jms.internal;
 
-import java.util.function.Consumer;
-
 import javax.transaction.xa.XAResource;
 
 import org.messaginghub.pooled.jms.util.JMSVersionSupport;
@@ -37,9 +35,8 @@ public class JmsPoolXASessionProxy extends JmsPoolAbstractSessionProxy<JmsPoolXA
     JmsPoolXASessionProxy(JmsPoolConnectionConfiguration configuration,
                           JMSVersionSupport versionSupport,
                           XASession session,
-                          Consumer<JmsPoolXASessionProxy> onSessionClosed,
-                          Consumer<JmsPoolXASessionProxy> onSessionDestroyed) {
-        super(configuration, versionSupport, session, onSessionClosed, onSessionDestroyed);
+                          JmsPoolSessionProxyManager<JmsPoolXASessionProxy> manager) {
+        super(configuration, versionSupport, session, manager);
 
         this.session = session;
     }

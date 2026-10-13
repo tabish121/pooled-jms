@@ -16,8 +16,6 @@
  */
 package org.messaginghub.pooled.jms.internal;
 
-import java.util.function.Consumer;
-
 import org.messaginghub.pooled.jms.util.JMSVersionSupport;
 
 import jakarta.jms.Session;
@@ -27,9 +25,8 @@ public class JmsPoolSessionProxy extends JmsPoolAbstractSessionProxy<JmsPoolSess
     public JmsPoolSessionProxy(JmsPoolConnectionConfiguration configuration,
                                JMSVersionSupport versionSupport,
                                Session session,
-                               Consumer<JmsPoolSessionProxy> onSessionClosed,
-                               Consumer<JmsPoolSessionProxy> onSessionDestroyed) {
-        super(configuration, versionSupport, session, onSessionClosed, onSessionDestroyed);
+                               JmsPoolSessionProxyManager<JmsPoolSessionProxy> manager) {
+        super(configuration, versionSupport, session, manager);
     }
 
     @Override
