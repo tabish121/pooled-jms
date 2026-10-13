@@ -17,9 +17,7 @@
 package org.messaginghub.pooled.jms.internal;
 
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -194,12 +192,19 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
             return activeSessions.size();
         }
 
+        @SuppressWarnings("unchecked")
         public void idleAll() {
-            final List<SP> active = new ArrayList<>(activeSessions);
+            final Queue<SP> active = activeSessions;
 
-            active.forEach(session -> {
-                session.close();
-            });
+            activeSessions = (Queue<SP>) EMPTY_QUEUE;
+
+            try {
+                active.forEach(session -> {
+                    session.close();
+                });
+            } finally {
+                activeSessions = active;
+            }
         }
 
         @SuppressWarnings("unchecked")
