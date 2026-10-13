@@ -20,8 +20,6 @@ import java.lang.invoke.MethodHandles;
 import java.util.Collection;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import org.messaginghub.pooled.jms.util.JMSVersionSupport;
 import org.messaginghub.pooled.jms.util.ReferenceCounted;
@@ -52,34 +50,32 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    @SuppressWarnings("rawtypes")
-    private static final AtomicIntegerFieldUpdater<JmsPoolAbstractConnectionProxy> CLOSED_UPDATER =
-        AtomicIntegerFieldUpdater.newUpdater(JmsPoolAbstractConnectionProxy.class, "closed");
-
-    private final AtomicBoolean started = new AtomicBoolean(false);
     private final Collection<ExceptionListener> exceptionListeners = new ConcurrentLinkedQueue<>();
     private final String connectionId;
     private final ReferenceCounted referenced = new ReferenceCounted();
     private final JmsPoolConnectionConfiguration configuration;
     private final JMSVersionSupport versionSupport;
     private final JmsPoolAbstractSessionPool<SP> sessionPool;
+    private final JmsPoolConnectionProxyManager<CP> manager;
 
     /**
      * Shared pooled JMS Connection that all subclasses may access directly.
      */
     protected final Connection connection;
 
-    private volatile int closed;
+    private volatile int destroyed;  // TODO consider different names for this state, invalid etc
     private long becameIdleAt;
-    private boolean hasExpired;
     private ExceptionListener connectionFactoryExceptionListener;
 
-    JmsPoolAbstractConnectionProxy(JmsPoolConnectionConfiguration configuration, Connection connection) {
+    JmsPoolAbstractConnectionProxy(JmsPoolConnectionConfiguration configuration,
+                                   Connection connection,
+                                   JmsPoolConnectionProxyManager<CP> manager) {
         this.configuration = configuration;
         this.connection = connection;
         this.connectionId = connection.toString();
         this.versionSupport = new JMSVersionSupport(connection);
         this.sessionPool = createSessionPool(configuration);
+        this.manager = manager;
 
         try {
             // Check if wrapped connection already had an exception listener and preserve it
@@ -95,105 +91,49 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
 
     protected abstract CP self();
 
-    public synchronized CP acquire() throws IllegalStateException {
-        checkClosed();
-        becameIdleAt = 0;
-        referenced.acquire();
-        return self();
-    }
-
-    synchronized boolean checkIsUsable() {
-        boolean usable = true;
-
-        if (isClosed() || idleTimeoutCheck()) {
-            LOG.trace("Connection has expired or was closed: {} and will be discarded", connection);
-            usable = false;
-        } else {
-            // Sanity check the Connection and if it throws IllegalStateException we assume
-            // that it is closed or has failed due to some IO error.
-            try {
-                connection.getExceptionListener();
-            } catch (IllegalStateException jmsISE) {
-                usable = false;
-            } catch (Exception ambiguous) {
-                // Unsure if connection is still valid so continue as if it still is.
-            }
-        }
-
-        return usable;
-    }
-
-    synchronized void destroy() {
-        // Destroy is unrecoverable, once destroyed the underlying connection is closed.
-        if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
-            try {
-                sessionPool.destroy();
-            } catch (Exception ex) {
-                LOG.debug("Suppressed error from on destroy handler in connection proy.", ex);
-            } finally {
-                try {
-                    connection.close();
-                } catch (Exception e) {
-                }
-            }
-        }
+    public CP acquire() throws JMSException {
+        checkDestroyed();
+        return manager.tryAcquireReference(self());
     }
 
     @Override
-    public synchronized void close() {
-        // Closing this doesn't really close the connection or mark it as closed, it just
-        // puts the connection into an idle state where it might close if the provider
-        // connection closes or if an idle timeout occurs to that causes it to be destroyed.
-        if (!isClosed() && referenced.release()) {
-            sessionPool.idle();
-            becameIdleAt = System.currentTimeMillis();
+    public void close() {
+        if (!isDestroyed()) {
+            manager.tryReleaseReference(self());
         }
     }
 
-    public boolean isClosed() {
-        return closed > 0;
-    }
-
     public Connection getProviderConnection() throws JMSException {
-        checkClosed();
+        checkDestroyed();
         return connection;
     }
 
     @Override
     public void start() throws JMSException {
-        if (started.compareAndSet(false, true)) {
-            try {
-                connection.start();
-            } catch (Throwable error) {
-                started.set(false);
-                close();
-                throw error;
-            }
+        checkDestroyed();
+
+        try {
+            connection.start();
+        } catch (Throwable error) {
+            manager.invalidateConnection(self());
+            throw error;
         }
     }
 
     @Override
     public void stop() throws JMSException {
-        if (started.compareAndSet(true, false)) {
-            try {
-                connection.stop();
-            } catch (Throwable error) {
-                started.set(false);
-                destroy();
-                throw error;
-            }
-        }
+        checkDestroyed();
     }
 
     @Override
     public String getClientID() throws JMSException {
-        checkClosed();
+        checkDestroyed();
         return connection.getClientID();
     }
 
     @Override
     public void setClientID(String clientID) throws JMSException {
-        checkClosed();
+        checkDestroyed();
 
         // ignore repeated calls to setClientID() with the same client id
         // this could happen when a JMS component such as Spring that uses a
@@ -207,7 +147,7 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
 
     @Override
     public ConnectionMetaData getMetaData() throws JMSException {
-        checkClosed();
+        checkDestroyed();
         return connection.getMetaData();
     }
 
@@ -227,7 +167,7 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
     }
 
     protected SP doCreateSession(boolean transacted, int acknowledgeMode) throws JMSException {
-        checkClosed();
+        checkDestroyed();
 
         final SP session;
 
@@ -244,26 +184,26 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
 
     @Override
     public ConnectionConsumer createConnectionConsumer(Destination destination, String messageSelector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
-        checkClosed();
+        checkDestroyed();
         return connection.createConnectionConsumer(destination, messageSelector, sessionPool, maxMessages);
     }
 
     @Override
     public ConnectionConsumer createDurableConnectionConsumer(Topic topic, String subscriptionName, String messageSelector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
-        checkClosed();
+        checkDestroyed();
         return connection.createDurableConnectionConsumer(topic, subscriptionName, messageSelector, sessionPool, maxMessages);
     }
 
     @Override
     public ConnectionConsumer createSharedConnectionConsumer(Topic topic, String subscriptionName, String messageSelector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
-        checkClosed();
+        checkDestroyed();
         versionSupport.enforceSharedSubscriptionSupport();
         return connection.createSharedConnectionConsumer(topic, subscriptionName, messageSelector, sessionPool, maxMessages);
     }
 
     @Override
     public ConnectionConsumer createSharedDurableConnectionConsumer(Topic topic, String subscriptionName, String messageSelector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
-        checkClosed();
+        checkDestroyed();
         versionSupport.enforceSharedSubscriptionSupport();
         return connection.createSharedDurableConnectionConsumer(topic, subscriptionName, messageSelector, sessionPool, maxMessages);
     }
@@ -323,7 +263,7 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
         // Closes the underlying connection and removes it from the pool if not configured
         // to assume the connection is fault tolerant and can recover on its own.
         if (!configuration.isFaultTolerantConnections()) {
-            close();
+            manager.invalidateConnection(self());
         }
 
         // Each JMS connection that comes from the pool wraps a connection holder and can
@@ -373,28 +313,6 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
         return getClass().getSimpleName() + "{ " + connectionId + " ]";
     }
 
-    /**
-     * Determines if this Connection has expired.
-     * <p>
-     * A PooledConnection is considered expired when all references to it are released AND the
-     * configured idleTimeout has elapsed.  Once a PooledConnection is determined to have expired
-     * its underlying Connection is closed.
-     *
-     * @return true if this connection has expired and can be closed.
-     */
-    synchronized boolean idleTimeoutCheck() {
-        final int idleTimeout = configuration.getConnectionIdleTimeout();
-
-        // Only set hasExpired here if no references, as a Connection with references is by
-        // definition not idle at this time.
-        if (referenced.isUnreferenced() && idleTimeout > 0 && becameIdleAt != 0 && ((System.currentTimeMillis() - becameIdleAt) >= idleTimeout)) {
-            hasExpired = true;
-            destroy();
-        }
-
-        return hasExpired;
-    }
-
     JmsPoolConnectionConfiguration getConfiguration() {
         return configuration;
     }
@@ -407,15 +325,74 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
         return connection;
     }
 
+    void doAcquire() {
+        becameIdleAt = 0;
+        referenced.acquire();
+    }
+
+    void doRelease() {
+        if (referenced.release()) {
+            sessionPool.idle();
+            becameIdleAt = System.currentTimeMillis();
+        }
+    }
+
+    void doInvalidate() {
+        try {
+            sessionPool.destroy();
+        } catch (Exception ex) {
+            LOG.debug("Suppressed error from on sesion pool destroy in connection proy.", ex);
+        } finally {
+            try {
+                connection.close();
+            } catch (Exception ex) {
+                LOG.trace("Suppressed error from provider connection close in connection proy.", ex);
+            }
+        }
+    }
+
+    boolean doCheckIsUsable() {
+        final int idleTimeout = configuration.getConnectionIdleTimeout();
+
+        boolean usable = true;
+
+        if (isDestroyed()) {
+            usable = false;
+        } else if (referenced.isUnreferenced() && idleTimeout > 0 && becameIdleAt != 0 && ((System.currentTimeMillis() - becameIdleAt) >= idleTimeout)) {
+            LOG.trace("Connection has expired or was closed: {} and will be discarded", connection);
+            usable = false;
+        } else {
+            // Sanity check the Connection and if it throws IllegalStateException we assume
+            // that it is closed or has failed due to some IO error.
+            try {
+                connection.getExceptionListener();
+            } catch (IllegalStateException jmsISE) {
+                usable = false;
+            } catch (Exception ambiguous) {
+                // Unsure if connection is still valid so continue as if it still is.
+            }
+        }
+
+        return usable;
+    }
+
+    boolean isIdle() {
+        return !referenced.isReferenced();
+    }
+
     protected abstract JmsPoolAbstractSessionPool<SP> createSessionPool(JmsPoolConnectionConfiguration configuration);
 
+    protected boolean isDestroyed() {
+        return destroyed > 0;
+    }
+
     /**
-     * Checks for closure of this connection wrapper and throws if true.
+     * Checks for the permanent shutdown of this connection proxy and throws if true.
      *
-     * @throws IllegalStateException if the connection is closed.
+     * @throws IllegalStateException if the connection is closed permanently.
      */
-    protected void checkClosed() throws IllegalStateException {
-        if (isClosed()) {
+    protected void checkDestroyed() throws IllegalStateException {
+        if (isDestroyed()) {
             throw new IllegalStateException("Shared pooled Connection has already been closed");
         }
     }
