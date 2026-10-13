@@ -22,8 +22,6 @@ import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
-import java.util.function.Consumer;
 
 import org.messaginghub.pooled.jms.util.FixedReference;
 import org.messaginghub.pooled.jms.util.JMSVersionSupport;
@@ -55,25 +53,20 @@ import jakarta.jms.TopicSession;
  * Used to store a pooled session instance and any resources that can be left open
  * and carried along with the pooled instance such as the anonymous producer used
  * for all MessageProducer instances created from this pooled session when enabled.
- * When the client code closes the session any resources that it created during the
- * time it was loaned to the client will be closed and cleared. If no errors occur
- * during the session cleanup it will be placed back into the pool of sessions for
- * use when a new call to create a session is made.
+ * When the client code closes the session it is returned to the pool of available
+ * sessions which will be used during the next call to create a session from the
+ * parent connection.
  */
 public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSessionProxy<SP>> implements Session, TopicSession, QueueSession {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    @SuppressWarnings("rawtypes")
-    private static final AtomicIntegerFieldUpdater<JmsPoolAbstractSessionProxy> CLOSED_UPDATER =
-        AtomicIntegerFieldUpdater.newUpdater(JmsPoolAbstractSessionProxy.class, "closed");
-
     protected final JmsPoolConnectionConfiguration configuration;
     protected final Session session;
     protected final JMSVersionSupport versionSupport;
 
-    private final Consumer<SP> onSessionClosed;
-    private final Consumer<SP> onSessionDestroyed;
+    private final Map<Destination, JmsPoolMessageProducerProxy> cachedProducers;
+    private final JmsPoolSessionProxyManager<SP> manager;
 
     // We either only create anonymous producers in which case these values will hold an instance
     // that we hand out to every caller as the sole JMS message producer in use be the pooled JMS
@@ -81,20 +74,16 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
     // a cache for any anonymous producers requested.
     private volatile JmsPoolMessageProducerProxy anonymousProducer;
 
-    private final Map<Destination, JmsPoolMessageProducerProxy> cachedProducers;
-
-    private volatile int closed = 1;
+    private volatile boolean closed;
 
     public JmsPoolAbstractSessionProxy(JmsPoolConnectionConfiguration configuration,
                                        JMSVersionSupport versionSupprt,
                                        Session session,
-                                       Consumer<SP> onSessionClosed,
-                                       Consumer<SP> onSessionDestroyed) {
+                                       JmsPoolSessionProxyManager<SP> manager) {
         this.configuration = configuration;
         this.versionSupport = versionSupprt;
         this.session = session;
-        this.onSessionClosed = onSessionClosed;
-        this.onSessionDestroyed = onSessionDestroyed;
+        this.manager = manager;
 
         if (!configuration.isUseAnonymousProducers() && configuration.getExplicitProducerCacheSize() > 0) {
             cachedProducers = new ProducerLRUCache(configuration.getExplicitProducerCacheSize());
@@ -105,29 +94,13 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
 
     protected abstract SP self();
 
-    public void open() {
-        if (!CLOSED_UPDATER.compareAndSet(this, 1, 0)) {
-            throw new IllegalStateRuntimeException("Open called on an already opened or destroyed session, state should never mismatch");
-        }
-    }
-
     @Override
     public void close() {
-        if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
-            onSessionClosed.accept(self());
-        }
+        manager.releaseSession(self());
     }
 
     public void destroy() {
-        if (CLOSED_UPDATER.getAndSet(this, 2) != 2) {
-            try {
-                onSessionDestroyed.accept(self());
-            } catch (Exception e) {
-                LOG.trace("Ignoring exception on invalidateObject as discarding session: " + e.getMessage(), e);
-            } finally {
-                internalClose();
-            }
-        }
+        manager.closeSession(self());
     }
 
     void internalClose() {
@@ -136,6 +109,7 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
         } catch (JMSException ex) {
             LOG.trace("Ignoring exception while closing internal JMS session: " + ex.getMessage(), ex);
         } finally {
+            closed = true;
             anonymousProducer = null;
             cachedProducers.clear();
         }
@@ -227,7 +201,7 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
      * @return <code>true</code> if the session has been closed.
      */
     protected boolean isClosed() {
-        return closed > 0;
+        return closed;
     }
 
     /**

@@ -16,8 +16,6 @@
  */
 package org.messaginghub.pooled.jms.internal;
 
-import java.util.function.Consumer;
-
 import jakarta.jms.JMSException;
 import jakarta.jms.Session;
 import jakarta.jms.XAConnection;
@@ -62,11 +60,10 @@ public class JmsPoolXAConnectionProxy extends JmsPoolAbstractConnectionProxy<Jms
 
         @Override
         protected JmsPoolXASessionProxy createSessionProxy(boolean transacted, int sessionMode,
-                                                           Consumer<JmsPoolXASessionProxy> onSessionClosed,
-                                                           Consumer<JmsPoolXASessionProxy> onSessionDestroyed) throws JMSException {
+                                                           JmsPoolSessionProxyManager<JmsPoolXASessionProxy> manager) throws JMSException {
             final XASession session = (XASession) getConnection().createSession(transacted, sessionMode);
 
-            return new JmsPoolXASessionProxy(getConfiguration(), getVersionSupport(), session, onSessionClosed, onSessionDestroyed);
+            return new JmsPoolXASessionProxy(getConfiguration(), getVersionSupport(), session, manager);
         }
     }
 }
