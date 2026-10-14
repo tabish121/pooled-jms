@@ -38,8 +38,6 @@ import org.junit.jupiter.api.Timeout;
 import org.messaginghub.pooled.jms.mock.MockJMSConnection;
 import org.messaginghub.pooled.jms.mock.MockJMSConnectionFactory;
 import org.messaginghub.pooled.jms.util.Wait;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import jakarta.jms.Connection;
 import jakarta.jms.IllegalStateException;
@@ -55,8 +53,6 @@ import jakarta.jms.TopicConnectionFactory;
  */
 @Timeout(60)
 public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
-
-    public final static Logger LOG = LoggerFactory.getLogger(JmsPoolConnectionFactoryTest.class);
 
     @Test
     public void testInstanceOf() throws  Exception {

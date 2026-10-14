@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -28,16 +29,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import jakarta.jms.Connection;
-import jakarta.jms.JMSException;
-import jakarta.jms.Session;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.messaginghub.pooled.jms.util.Wait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
 
 /**
  * Checks the behavior of the PooledConnectionFactory when the maximum amount of sessions is being reached
@@ -47,13 +48,11 @@ import org.slf4j.LoggerFactory;
 @Timeout(60)
 public class JmsPoolConnectionFactoryMaximumActiveTest extends JmsPoolTestSupport {
 
-    public final static Logger LOG = LoggerFactory.getLogger(JmsPoolConnectionFactoryMaximumActiveTest.class);
+    private Connection connection = null;
+    private ConcurrentMap<Integer, Session> sessions = new ConcurrentHashMap<Integer, Session>();
 
-    private static Connection connection = null;
-    private static ConcurrentMap<Integer, Session> sessions = new ConcurrentHashMap<Integer, Session>();
-
-    public static void addSession(Session s) {
-        sessions.put(s.hashCode(), s);
+    public void addSession(Session s) {
+        sessions.put(System.identityHashCode(s), s);
     }
 
     @BeforeEach
@@ -74,9 +73,9 @@ public class JmsPoolConnectionFactoryMaximumActiveTest extends JmsPoolTestSuppor
         // start test runner threads. It is expected that the second thread
         // blocks on the call to createSession()
 
-        ExecutorService executor = Executors.newFixedThreadPool(1);
-        final Future<Boolean> result1 = executor.submit(new SessionTakerAndReturner());
-        final Future<Boolean> result2 = executor.submit(new SessionTaker());
+        final ExecutorService executor = Executors.newFixedThreadPool(1);
+        final Future<Boolean> result1 = executor.submit(new SessionTakerAndReturner(this));
+        final Future<Boolean> result2 = executor.submit(new SessionTaker(this));
 
         assertTrue(Wait.waitFor(new Wait.Condition() {
 
@@ -124,9 +123,9 @@ public class JmsPoolConnectionFactoryMaximumActiveTest extends JmsPoolTestSuppor
         // start test runner threads. It is expected that the second thread
         // blocks on the call to createSession()
 
-        ExecutorService executor = Executors.newFixedThreadPool(1);
-        final Future<Boolean> result1 = executor.submit(new SessionTaker());
-        final Future<Boolean> result2 = executor.submit(new SessionTaker());
+        final ExecutorService executor = Executors.newFixedThreadPool(1);
+        final Future<Boolean> result1 = executor.submit(new SessionTaker(this));
+        final Future<Boolean> result2 = executor.submit(new SessionTaker(this));
 
         assertTrue(Wait.waitFor(new Wait.Condition() {
 
@@ -172,7 +171,16 @@ public class JmsPoolConnectionFactoryMaximumActiveTest extends JmsPoolTestSuppor
 
     static class SessionTakerAndReturner implements Callable<Boolean> {
 
-        public final static Logger TASK_LOG = LoggerFactory.getLogger(SessionTaker.class);
+        private static final Logger TASK_LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+        private JmsPoolConnectionFactoryMaximumActiveTest test;
+
+        /**
+         * @param jmsPoolConnectionFactoryMaximumActiveTest
+         */
+        public SessionTakerAndReturner(JmsPoolConnectionFactoryMaximumActiveTest test) {
+            this.test = test;
+        }
 
         /**
          * @return true if session created, false otherwise
@@ -183,9 +191,9 @@ public class JmsPoolConnectionFactoryMaximumActiveTest extends JmsPoolTestSuppor
             Session session = null;
 
             try {
-                session = JmsPoolConnectionFactoryMaximumActiveTest.connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+                session = test.connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
                 TASK_LOG.info("Created new Session with id" + session);
-                JmsPoolConnectionFactoryMaximumActiveTest.addSession(session);
+                test.addSession(session);
             } catch (Exception ex) {
                 TASK_LOG.error(ex.getMessage());
                 return Boolean.FALSE;
@@ -204,7 +212,16 @@ public class JmsPoolConnectionFactoryMaximumActiveTest extends JmsPoolTestSuppor
 
     static class SessionTaker implements Callable<Boolean> {
 
-        public final static Logger TASK_LOG = LoggerFactory.getLogger(SessionTaker.class);
+        private static final Logger TASK_LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+        private JmsPoolConnectionFactoryMaximumActiveTest test;
+
+        /**
+         * @param jmsPoolConnectionFactoryMaximumActiveTest
+         */
+        public SessionTaker(JmsPoolConnectionFactoryMaximumActiveTest test) {
+            this.test = test;
+        }
 
         /**
          * @return true if session created, false otherwise
@@ -215,9 +232,9 @@ public class JmsPoolConnectionFactoryMaximumActiveTest extends JmsPoolTestSuppor
             Session one = null;
 
             try {
-                one = JmsPoolConnectionFactoryMaximumActiveTest.connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+                one = test.connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
                 TASK_LOG.info("Created new Session with id" + one);
-                JmsPoolConnectionFactoryMaximumActiveTest.addSession(one);
+                test.addSession(one);
             } catch (Exception ex) {
                 TASK_LOG.error(ex.getMessage());
                 return Boolean.FALSE;

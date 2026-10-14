@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import java.lang.invoke.MethodHandles;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -63,7 +64,7 @@ import jakarta.jms.TemporaryTopic;
 @Timeout(20)
 public class JmsPoolConnectionTest extends JmsPoolTestSupport {
 
-    private static final Logger LOG = LoggerFactory.getLogger(JmsPoolConnectionTest.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     @Test
     public void testExceptionListenerGetsNotified() throws Exception {

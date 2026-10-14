@@ -64,7 +64,7 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
     protected final Connection connection;
 
     private volatile int destroyed;  // TODO consider different names for this state, invalid etc
-    private long becameIdleAt;
+    private volatile long becameIdleAt;
     private ExceptionListener connectionFactoryExceptionListener;
 
     JmsPoolAbstractConnectionProxy(JmsPoolConnectionConfiguration configuration,

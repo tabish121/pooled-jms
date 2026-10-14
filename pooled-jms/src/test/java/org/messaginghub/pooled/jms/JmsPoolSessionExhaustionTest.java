@@ -21,10 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-import jakarta.jms.Connection;
-import jakarta.jms.IllegalStateException;
-import jakarta.jms.JMSException;
-import jakarta.jms.Session;
+import java.lang.invoke.MethodHandles;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,10 +31,15 @@ import org.messaginghub.pooled.jms.mock.MockJMSConnectionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import jakarta.jms.Connection;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
+
 @Timeout(60)
 public class JmsPoolSessionExhaustionTest extends JmsPoolTestSupport {
 
-    public final static Logger LOG = LoggerFactory.getLogger(JmsPoolSessionExhaustionTest.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     @Override
     @BeforeEach

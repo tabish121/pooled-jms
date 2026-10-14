@@ -19,6 +19,7 @@ package org.messaginghub.pooled.jms.util;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.invoke.MethodHandles;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -34,12 +35,13 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import javax.net.ssl.SSLServerSocketFactory;
 import javax.net.ssl.SSLSocketFactory;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class SocketProxy {
 
-    private static final transient Logger LOG = LoggerFactory.getLogger(SocketProxy.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     public static final int ACCEPT_TIMEOUT_MILLIS = 100;
 
@@ -298,7 +300,8 @@ public class SocketProxy {
                 pause.get().countDown();
             }
 
-            public void run() {
+            @Override
+			public void run() {
                 byte[] buf = new byte[1024];
                 try {
                     InputStream in = src.getInputStream();
@@ -352,7 +355,8 @@ public class SocketProxy {
             pause.get().countDown();
         }
 
-        public void run() {
+        @Override
+		public void run() {
             try {
                 while (!socket.isClosed()) {
                     pause.get().await();
