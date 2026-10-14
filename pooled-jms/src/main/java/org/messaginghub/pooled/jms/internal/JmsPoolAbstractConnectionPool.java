@@ -59,7 +59,7 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
 
     JmsPoolAbstractConnectionPool() {}
 
-    public int getMaxConnections() {
+    public synchronized int getMaxConnections() {
         return maxConnections;
     }
 
@@ -67,7 +67,7 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
         this.maxConnections = maxConnections;
     }
 
-    public long getConnectionCheckInterval() {
+    public synchronized long getConnectionCheckInterval() {
         return connectionCheckInterval;
     }
 

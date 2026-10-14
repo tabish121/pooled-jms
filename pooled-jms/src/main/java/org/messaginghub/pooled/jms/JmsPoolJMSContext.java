@@ -59,8 +59,8 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
     private final int sessionMode;
 
     private volatile JmsPoolAbstractSession session;
-    private JmsPoolMessageProducer sharedProducer;
-    private boolean autoStart = DEFAULT_JMS_CONTEXT_AUTO_START;
+    private volatile JmsPoolMessageProducer sharedProducer;
+    private volatile boolean autoStart = DEFAULT_JMS_CONTEXT_AUTO_START;
 
     JmsPoolJMSContext(JmsPoolAbstractConnection connection, int sessionMode) {
         this(connection, sessionMode, new AtomicLong(1));

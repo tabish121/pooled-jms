@@ -16,6 +16,7 @@
  */
 package org.messaginghub.pooled.jms.mock;
 
+import java.lang.invoke.MethodHandles;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -59,7 +60,7 @@ import jakarta.jms.TopicSession;
  */
 public class MockJMSConnection implements Connection, TopicConnection, QueueConnection, AutoCloseable {
 
-    private static final Logger LOG = LoggerFactory.getLogger(MockJMSConnection.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final MockJMSConnectionStats stats = new MockJMSConnectionStats();
     private final Map<String, MockJMSSession> sessions = new ConcurrentHashMap<>();

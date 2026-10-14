@@ -20,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import java.lang.invoke.MethodHandles;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -44,7 +46,7 @@ import jakarta.jms.Session;
 @Timeout(60)
 public class JmsPoolConnectionSecurityExceptionTest extends JmsPoolTestSupport {
 
-    private static final Logger LOG = LoggerFactory.getLogger(JmsPoolConnectionSecurityExceptionTest.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private MockJMSUser user;
 

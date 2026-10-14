@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -43,7 +44,7 @@ import jakarta.jms.Session;
 @Timeout(60)
 public class JmsPoolReconnectOnFailureTest extends JmsPoolTestSupport {
 
-    private static final Logger LOG = LoggerFactory.getLogger(JmsPoolReconnectOnFailureTest.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     @Override
     @BeforeEach

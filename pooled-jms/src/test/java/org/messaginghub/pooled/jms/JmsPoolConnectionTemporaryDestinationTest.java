@@ -19,6 +19,8 @@ package org.messaginghub.pooled.jms;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
+import java.lang.invoke.MethodHandles;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -34,7 +36,7 @@ import jakarta.jms.Topic;
 @Timeout(60)
 public class JmsPoolConnectionTemporaryDestinationTest {
 
-    private static final Logger LOG = LoggerFactory.getLogger(JmsPoolConnectionTemporaryDestinationTest.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private MockJMSConnectionFactory mock;
     private JmsPoolConnectionFactory cf;
