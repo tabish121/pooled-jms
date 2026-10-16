@@ -48,18 +48,18 @@ import jakarta.jms.Topic;
  * @param <CP> the actual connection proxy type that this instance represents
  * @param <SP> the session proxy type that the connection proxy will be creating
  */
-public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractConnectionProxy<CP, SP>,
-                                                     SP extends JmsPoolAbstractSessionProxy<SP>> implements Connection, ExceptionListener {
+public abstract class JmsAbstractConnectionProxy<CP extends JmsAbstractConnectionProxy<CP, SP>,
+                                                     SP extends JmsAbstractSessionProxy<SP>> implements Connection, ExceptionListener {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final Collection<ExceptionListener> exceptionListeners = new ConcurrentLinkedQueue<>();
     private final String connectionId;
     private final ReferenceCounted referenced = new ReferenceCounted();
-    private final JmsPoolConnectionConfiguration configuration;
+    private final JmsConnectionProxyConfiguration configuration;
     private final JMSVersionSupport versionSupport;
-    private final JmsPoolAbstractSessionPool<SP> sessionPool;
-    private final JmsPoolConnectionProxyManager<CP> manager;
+    private final JmsAbstractSessionPool<SP> sessionPool;
+    private final JmsConnectionProxyManager<CP> manager;
 
     /**
      * Shared pooled JMS Connection that all subclasses may access directly.
@@ -70,9 +70,9 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
     private volatile long becameIdleAt;
     private ExceptionListener connectionFactoryExceptionListener;
 
-    JmsPoolAbstractConnectionProxy(JmsPoolConnectionConfiguration configuration,
+    JmsAbstractConnectionProxy(JmsConnectionProxyConfiguration configuration,
                                    Connection connection,
-                                   JmsPoolConnectionProxyManager<CP> manager) {
+                                   JmsConnectionProxyManager<CP> manager) {
         this.configuration = configuration;
         this.connection = connection;
         this.connectionId = connection.toString();
@@ -367,7 +367,7 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
 
     //----- Internal connection proxy APIs not meant for public use
 
-    JmsPoolConnectionConfiguration getConfiguration() {
+    JmsConnectionProxyConfiguration getConfiguration() {
         return configuration;
     }
 
@@ -447,7 +447,7 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
      *
      * @return the newly created session pool used by this connection proxy instance.
      */
-    protected abstract JmsPoolAbstractSessionPool<SP> createSessionPool(JmsPoolConnectionConfiguration configuration);
+    protected abstract JmsAbstractSessionPool<SP> createSessionPool(JmsConnectionProxyConfiguration configuration);
 
     /**
      * {@return <code>true</code> when the underlying provider is actually closed}

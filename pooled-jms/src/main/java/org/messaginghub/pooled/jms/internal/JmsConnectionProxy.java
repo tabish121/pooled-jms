@@ -23,35 +23,35 @@ import jakarta.jms.Session;
 /**
  * Non-XA JMS Connection proxy type.
  */
-public class JmsPoolConnectionProxy extends JmsPoolAbstractConnectionProxy<JmsPoolConnectionProxy, JmsPoolSessionProxy> {
+public class JmsConnectionProxy extends JmsAbstractConnectionProxy<JmsConnectionProxy, JmsSessionProxy> {
 
-    JmsPoolConnectionProxy(JmsPoolConnectionConfiguration configuration, Connection connection,
-                           JmsPoolConnectionProxyManager<JmsPoolConnectionProxy> manager) {
+    JmsConnectionProxy(JmsConnectionProxyConfiguration configuration, Connection connection,
+                           JmsConnectionProxyManager<JmsConnectionProxy> manager) {
         super(configuration, connection, manager);
     }
 
     @Override
-    protected JmsPoolConnectionProxy self() {
+    protected JmsConnectionProxy self() {
         return this;
     }
 
     @Override
-    protected JmsPoolSessionsPool createSessionPool(JmsPoolConnectionConfiguration configuration) {
+    protected JmsPoolSessionsPool createSessionPool(JmsConnectionProxyConfiguration configuration) {
         return new JmsPoolSessionsPool(configuration);
     }
 
-    private class JmsPoolSessionsPool extends JmsPoolAbstractSessionPool<JmsPoolSessionProxy> {
+    private class JmsPoolSessionsPool extends JmsAbstractSessionPool<JmsSessionProxy> {
 
-        JmsPoolSessionsPool(JmsPoolConnectionConfiguration configuration) {
+        JmsPoolSessionsPool(JmsConnectionProxyConfiguration configuration) {
             super(configuration);
         }
 
         @Override
-        protected JmsPoolSessionProxy createSessionProxy(boolean transacted, int sessionMode,
-                                                         JmsPoolSessionProxyManager<JmsPoolSessionProxy> manager) throws JMSException {
+        protected JmsSessionProxy createSessionProxy(boolean transacted, int sessionMode,
+                                                         JmsSessionProxyManager<JmsSessionProxy> manager) throws JMSException {
             final Session session = getConnection().createSession(transacted, sessionMode);
 
-            return new JmsPoolSessionProxy(getConfiguration(), getVersionSupport(), session, manager);
+            return new JmsSessionProxy(getConfiguration(), getVersionSupport(), session, manager);
         }
     }
 }

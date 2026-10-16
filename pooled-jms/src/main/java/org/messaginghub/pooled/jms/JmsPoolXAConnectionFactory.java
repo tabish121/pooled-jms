@@ -28,7 +28,7 @@ import javax.naming.Name;
 import javax.naming.NamingEnumeration;
 import javax.naming.spi.ObjectFactory;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolXAConnectionProxyFactory;
+import org.messaginghub.pooled.jms.internal.JmsXAConnectionProxyFactory;
 import org.messaginghub.pooled.jms.util.IntrospectionSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,7 +79,7 @@ import jakarta.transaction.TransactionManager;
  * non-negative value to configure the connection check thread to run, the implementation may enforce
  * a minimum time between eviction checks.
  */
-public class JmsPoolXAConnectionFactory extends JmsPoolAbstractConnectionFactory<JmsPoolXAConnectionProxyFactory> implements ObjectFactory, Serializable, XAConnectionFactory, XAQueueConnectionFactory, XATopicConnectionFactory {
+public class JmsPoolXAConnectionFactory extends JmsPoolAbstractConnectionFactory<JmsXAConnectionProxyFactory> implements ObjectFactory, Serializable, XAConnectionFactory, XAQueueConnectionFactory, XATopicConnectionFactory {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
     private static final long serialVersionUID = 7753681333583183646L;
@@ -87,7 +87,7 @@ public class JmsPoolXAConnectionFactory extends JmsPoolAbstractConnectionFactory
     /**
      * The connection proxy factory that creates the wrapped XAConnection instances for this factory.
      */
-    private final JmsPoolXAConnectionProxyFactory proxyFactory = new JmsPoolXAConnectionProxyFactory();
+    private final JmsXAConnectionProxyFactory proxyFactory = new JmsXAConnectionProxyFactory();
 
     /**
      * Transaction manager that must be assigned for enlistment to take affect
@@ -130,7 +130,7 @@ public class JmsPoolXAConnectionFactory extends JmsPoolAbstractConnectionFactory
     }
 
     @Override
-    protected JmsPoolXAConnectionProxyFactory getConnectionFactoryProxy() {
+    protected JmsXAConnectionProxyFactory getConnectionFactoryProxy() {
         return proxyFactory;
     }
 

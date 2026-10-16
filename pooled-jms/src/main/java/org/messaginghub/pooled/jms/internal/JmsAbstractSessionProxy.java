@@ -59,22 +59,22 @@ import jakarta.jms.TopicSession;
  *
  * @param <SP> the actual session proxy type that will be in use for this instance.
  */
-public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSessionProxy<SP>> implements Session, TopicSession, QueueSession {
+public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy<SP>> implements Session, TopicSession, QueueSession {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    protected final JmsPoolConnectionConfiguration configuration;
+    protected final JmsConnectionProxyConfiguration configuration;
     protected final Session session;
     protected final JMSVersionSupport versionSupport;
 
-    private final Map<Destination, JmsPoolMessageProducerProxy> cachedProducers;
-    private final JmsPoolSessionProxyManager<SP> manager;
+    private final Map<Destination, JmsMessageProducerProxy> cachedProducers;
+    private final JmsSessionProxyManager<SP> manager;
 
     // We either only create anonymous producers in which case these values will hold an instance
     // that we hand out to every caller as the sole JMS message producer in use be the pooled JMS
     // connection or we are creating explicitly bound JMS producers and these values are used as
     // a cache for any anonymous producers requested.
-    private volatile JmsPoolMessageProducerProxy anonymousProducer;
+    private volatile JmsMessageProducerProxy anonymousProducer;
 
     private volatile boolean closed;
 
@@ -90,10 +90,10 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
      * @param manager
      * 		The manager who owns this JMS session proxy and receives its events
      */
-    public JmsPoolAbstractSessionProxy(JmsPoolConnectionConfiguration configuration,
+    public JmsAbstractSessionProxy(JmsConnectionProxyConfiguration configuration,
                                        JMSVersionSupport versionSupprt,
                                        Session session,
-                                       JmsPoolSessionProxyManager<SP> manager) {
+                                       JmsSessionProxyManager<SP> manager) {
         this.configuration = configuration;
         this.versionSupport = versionSupprt;
         this.session = session;
@@ -145,19 +145,19 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
     //----- JMS Message producer create APIs ---------------------------------//
 
     @Override
-    public JmsPoolMessageProducerProxy createProducer(Destination destination) throws JMSException {
+    public JmsMessageProducerProxy createProducer(Destination destination) throws JMSException {
         checkClosed();
         return getOrCreateProducer(destination);
     }
 
     @Override
-    public JmsPoolMessageProducerProxy createPublisher(Topic topic) throws JMSException {
+    public JmsMessageProducerProxy createPublisher(Topic topic) throws JMSException {
         checkClosed();
         return getOrCreateProducer(topic);
     }
 
     @Override
-    public JmsPoolMessageProducerProxy createSender(Queue queue) throws JMSException {
+    public JmsMessageProducerProxy createSender(Queue queue) throws JMSException {
         checkClosed();
         return getOrCreateProducer(queue);
     }
@@ -165,103 +165,103 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
     //----- JMS Message consumer create APIs ---------------------------------//
 
     @Override
-    public JmsPoolMessageConsumerProxy createConsumer(Destination destination) throws JMSException {
+    public JmsMessageConsumerProxy createConsumer(Destination destination) throws JMSException {
         return createConsumer(destination, null, false);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createConsumer(Destination destination, String selector) throws JMSException {
+    public JmsMessageConsumerProxy createConsumer(Destination destination, String selector) throws JMSException {
         return createConsumer(destination, selector, false);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createConsumer(Destination destination, String selector, boolean noLocal) throws JMSException {
+    public JmsMessageConsumerProxy createConsumer(Destination destination, String selector, boolean noLocal) throws JMSException {
         checkClosed();
-        return new JmsPoolMessageConsumerProxy(session.createConsumer(destination, selector, noLocal), destination, selector, noLocal);
+        return new JmsMessageConsumerProxy(session.createConsumer(destination, selector, noLocal), destination, selector, noLocal);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createDurableConsumer(Topic topic, String name) throws JMSException {
+    public JmsMessageConsumerProxy createDurableConsumer(Topic topic, String name) throws JMSException {
         return createDurableConsumer(topic, name, null, false);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createDurableConsumer(Topic topic, String name, String selector, boolean noLocal) throws JMSException {
+    public JmsMessageConsumerProxy createDurableConsumer(Topic topic, String name, String selector, boolean noLocal) throws JMSException {
         checkClosed();
-        return new JmsPoolMessageConsumerProxy(session.createDurableConsumer(topic, name, selector, noLocal), topic, selector, noLocal);
+        return new JmsMessageConsumerProxy(session.createDurableConsumer(topic, name, selector, noLocal), topic, selector, noLocal);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createSharedConsumer(Topic topic, String name) throws JMSException {
+    public JmsMessageConsumerProxy createSharedConsumer(Topic topic, String name) throws JMSException {
         return createSharedConsumer(topic, name, null);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createSharedConsumer(Topic topic, String name, String selector) throws JMSException {
+    public JmsMessageConsumerProxy createSharedConsumer(Topic topic, String name, String selector) throws JMSException {
         checkClosed();
         versionSupport.enforceSharedSubscriptionSupport();
-        return new JmsPoolMessageConsumerProxy(session.createSharedConsumer(topic, name, selector), topic, selector, false);
+        return new JmsMessageConsumerProxy(session.createSharedConsumer(topic, name, selector), topic, selector, false);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createSharedDurableConsumer(Topic topic, String name) throws JMSException {
+    public JmsMessageConsumerProxy createSharedDurableConsumer(Topic topic, String name) throws JMSException {
         checkClosed();
         versionSupport.enforceSharedSubscriptionSupport();
-        return new JmsPoolMessageConsumerProxy(session.createSharedDurableConsumer(topic, name), topic, null, false);
+        return new JmsMessageConsumerProxy(session.createSharedDurableConsumer(topic, name), topic, null, false);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createSharedDurableConsumer(Topic topic, String name, String selector) throws JMSException {
+    public JmsMessageConsumerProxy createSharedDurableConsumer(Topic topic, String name, String selector) throws JMSException {
         checkClosed();
         versionSupport.enforceSharedSubscriptionSupport();
-        return new JmsPoolMessageConsumerProxy(session.createSharedDurableConsumer(topic, name, selector), topic, selector, false);
+        return new JmsMessageConsumerProxy(session.createSharedDurableConsumer(topic, name, selector), topic, selector, false);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createSubscriber(Topic topic) throws JMSException {
+    public JmsMessageConsumerProxy createSubscriber(Topic topic) throws JMSException {
         return createSubscriber(topic, null, false);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createSubscriber(Topic topic, String selector, boolean noLocal) throws JMSException {
+    public JmsMessageConsumerProxy createSubscriber(Topic topic, String selector, boolean noLocal) throws JMSException {
         checkClosed();
-        return new JmsPoolMessageConsumerProxy(session.createConsumer(topic, selector, noLocal), topic, selector, noLocal);
+        return new JmsMessageConsumerProxy(session.createConsumer(topic, selector, noLocal), topic, selector, noLocal);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createDurableSubscriber(Topic topic, String name) throws JMSException {
+    public JmsMessageConsumerProxy createDurableSubscriber(Topic topic, String name) throws JMSException {
         return createDurableSubscriber(topic, name, null, false);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createDurableSubscriber(Topic topic, String name, String selector, boolean noLocal) throws JMSException {
+    public JmsMessageConsumerProxy createDurableSubscriber(Topic topic, String name, String selector, boolean noLocal) throws JMSException {
         checkClosed();
-        return new JmsPoolMessageConsumerProxy(session.createDurableConsumer(topic, name, selector, noLocal), topic, selector, noLocal);
+        return new JmsMessageConsumerProxy(session.createDurableConsumer(topic, name, selector, noLocal), topic, selector, noLocal);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createReceiver(Queue queue) throws JMSException {
+    public JmsMessageConsumerProxy createReceiver(Queue queue) throws JMSException {
         return createReceiver(queue, null);
     }
 
     @Override
-    public JmsPoolMessageConsumerProxy createReceiver(Queue queue, String selector) throws JMSException {
+    public JmsMessageConsumerProxy createReceiver(Queue queue, String selector) throws JMSException {
         checkClosed();
-        return new JmsPoolMessageConsumerProxy(session.createConsumer(queue, selector), queue, selector, false);
+        return new JmsMessageConsumerProxy(session.createConsumer(queue, selector), queue, selector, false);
     }
 
     //----- JMS Queue Browser create APIs ------------------------------------//
 
     @Override
-    public JmsPoolQueueBrowserProxy createBrowser(Queue queue) throws JMSException {
+    public JmsQueueBrowserProxy createBrowser(Queue queue) throws JMSException {
         checkClosed();
-        return new JmsPoolQueueBrowserProxy(session.createBrowser(queue));
+        return new JmsQueueBrowserProxy(session.createBrowser(queue));
     }
 
     @Override
-    public JmsPoolQueueBrowserProxy createBrowser(Queue queue, String messageSelector) throws JMSException {
+    public JmsQueueBrowserProxy createBrowser(Queue queue, String messageSelector) throws JMSException {
         checkClosed();
-        return new JmsPoolQueueBrowserProxy(session.createBrowser(queue, messageSelector));
+        return new JmsQueueBrowserProxy(session.createBrowser(queue, messageSelector));
     }
 
     //----- JMS Destination creation APIs ------------------------------------//
@@ -436,15 +436,15 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
      *
      * @throws JMSException if an error occurs while attempt to obtain a producer instance
      */
-    protected synchronized JmsPoolMessageProducerProxy getOrCreateProducer(Destination destination) throws JMSException {
-        JmsPoolMessageProducerProxy delegate = null;
+    protected synchronized JmsMessageProducerProxy getOrCreateProducer(Destination destination) throws JMSException {
+        JmsMessageProducerProxy delegate = null;
 
         if (isUseAnonymousProducer() || destination == null) {
             delegate = anonymousProducer;
 
             if (delegate == null) {
                 // Anonymous instance is not reference counted so create a fixed reference instance
-                delegate = new JmsPoolMessageProducerProxy(this,
+                delegate = new JmsMessageProducerProxy(this,
                                                            session.createProducer(null),
                                                            null,
                                                            new FixedReference(),
@@ -458,7 +458,7 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
 
             if (delegate == null) {
                 // Cached instance is held until evicted from the cache so take an additional reference on create.
-                delegate = new JmsPoolMessageProducerProxy(this,
+                delegate = new JmsMessageProducerProxy(this,
                                                            session.createProducer(destination),
                                                            destination,
                                                            new ReferenceCounted().acquire(),
@@ -472,11 +472,11 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
         return delegate.acquire();
     }
 
-    private synchronized void onProducerClosed(JmsPoolMessageProducerProxy producer, Destination destination) {
+    private synchronized void onProducerClosed(JmsMessageProducerProxy producer, Destination destination) {
         // Nothing done here currently but we could use this to track statistics later.
     }
 
-    private void onProducerDestroyed(JmsPoolMessageProducerProxy producer, Destination destination) {
+    private void onProducerDestroyed(JmsMessageProducerProxy producer, Destination destination) {
         // Ensure that the anonymous reference are cleared of a destroyed producer resource or the
         // cache is updated if enabled to remove the destroyed named producer.
         if (producer == anonymousProducer) {
@@ -521,7 +521,7 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
         }
     }
 
-    private static class ProducerLRUCache extends LRUCache<Destination, JmsPoolMessageProducerProxy> {
+    private static class ProducerLRUCache extends LRUCache<Destination, JmsMessageProducerProxy> {
 
         private static final long serialVersionUID = -1;
 
@@ -530,36 +530,36 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
         }
 
         @Override
-        protected void onCacheEviction(Map.Entry<Destination, JmsPoolMessageProducerProxy> eldest) {
+        protected void onCacheEviction(Map.Entry<Destination, JmsMessageProducerProxy> eldest) {
             // Closes the cache's reference to the producer which will close it fully
             // if the producer is not reference currently by any other client code.
-            final JmsPoolMessageProducerProxy producer = eldest.getValue();
+            final JmsMessageProducerProxy producer = eldest.getValue();
             try {
                 producer.close();
             } catch (Exception ex) {}
         }
     }
 
-    private static class DiscardingMap extends AbstractMap<Destination, JmsPoolMessageProducerProxy> {
+    private static class DiscardingMap extends AbstractMap<Destination, JmsMessageProducerProxy> {
 
         private static final DiscardingMap INSTANCE = new DiscardingMap();
 
-        public static Map<Destination, JmsPoolMessageProducerProxy> getInstance() {
+        public static Map<Destination, JmsMessageProducerProxy> getInstance() {
             return INSTANCE;
         }
 
         @Override
-        public JmsPoolMessageProducerProxy put(Destination key, JmsPoolMessageProducerProxy value) {
+        public JmsMessageProducerProxy put(Destination key, JmsMessageProducerProxy value) {
             return null;
         }
 
         @Override
-        public JmsPoolMessageProducerProxy get(Object key) {
+        public JmsMessageProducerProxy get(Object key) {
             return null;
         }
 
         @Override
-        public JmsPoolMessageProducerProxy remove(Object key) {
+        public JmsMessageProducerProxy remove(Object key) {
             return null;
         }
 
@@ -569,7 +569,7 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
         }
 
         @Override
-        public Set<Entry<Destination, JmsPoolMessageProducerProxy>> entrySet() {
+        public Set<Entry<Destination, JmsMessageProducerProxy>> entrySet() {
             return Collections.emptySet();
         }
     }

@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolAbstractSessionProxy;
+import org.messaginghub.pooled.jms.internal.JmsAbstractSessionProxy;
 import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,7 +69,7 @@ public abstract class JmsPoolAbstractSession implements Session, TopicSession, Q
 
     protected final Map<AutoCloseable, AutoCloseable> resources = new ConcurrentHashMap<>();
     protected final Map<JmsPoolSessionEventListener, JmsPoolSessionEventListener> sessionEventListeners = new ConcurrentHashMap<>();
-    protected final JmsPoolAbstractSessionProxy<?> session;
+    protected final JmsAbstractSessionProxy<?> session;
     protected final boolean transactional;
 
     protected volatile int closed;
@@ -82,7 +82,7 @@ public abstract class JmsPoolAbstractSession implements Session, TopicSession, Q
      * @param transactional
      * 		Boolean flag indicating if this session is transactional or not
      */
-    JmsPoolAbstractSession(JmsPoolAbstractSessionProxy<?> session, boolean transactional) {
+    JmsPoolAbstractSession(JmsAbstractSessionProxy<?> session, boolean transactional) {
         this.session = session;
         this.transactional = transactional;
     }
@@ -284,7 +284,7 @@ public abstract class JmsPoolAbstractSession implements Session, TopicSession, Q
 
     @Override
     public void run() {
-        final JmsPoolAbstractSessionProxy<?> session;
+        final JmsAbstractSessionProxy<?> session;
 
         try {
             session = safeGetSessionProxy();
@@ -497,6 +497,6 @@ public abstract class JmsPoolAbstractSession implements Session, TopicSession, Q
         return transactional;
     }
 
-    protected abstract JmsPoolAbstractSessionProxy<?> safeGetSessionProxy() throws JMSException;
+    protected abstract JmsAbstractSessionProxy<?> safeGetSessionProxy() throws JMSException;
 
 }

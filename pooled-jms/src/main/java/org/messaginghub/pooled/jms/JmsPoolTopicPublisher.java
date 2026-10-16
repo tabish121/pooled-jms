@@ -18,7 +18,7 @@ package org.messaginghub.pooled.jms;
 
 import java.util.function.Consumer;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolMessageProducerProxy;
+import org.messaginghub.pooled.jms.internal.JmsMessageProducerProxy;
 
 import jakarta.jms.JMSException;
 import jakarta.jms.Message;
@@ -30,7 +30,7 @@ import jakarta.jms.TopicPublisher;
  */
 public class JmsPoolTopicPublisher extends JmsPoolMessageProducer implements TopicPublisher, AutoCloseable {
 
-    JmsPoolTopicPublisher(JmsPoolMessageProducerProxy messageProducer, Topic destination, Consumer<JmsPoolMessageProducer> onClose) throws JMSException {
+    JmsPoolTopicPublisher(JmsMessageProducerProxy messageProducer, Topic destination, Consumer<JmsPoolMessageProducer> onClose) throws JMSException {
         super(messageProducer, destination, onClose);
     }
 

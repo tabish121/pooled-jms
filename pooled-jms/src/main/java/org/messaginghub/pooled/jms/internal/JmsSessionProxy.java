@@ -23,12 +23,12 @@ import jakarta.jms.Session;
 /**
  * JMS Session proxy instance for non-XA sessions
  */
-public class JmsPoolSessionProxy extends JmsPoolAbstractSessionProxy<JmsPoolSessionProxy> {
+public class JmsSessionProxy extends JmsAbstractSessionProxy<JmsSessionProxy> {
 
-    public JmsPoolSessionProxy(JmsPoolConnectionConfiguration configuration,
+    public JmsSessionProxy(JmsConnectionProxyConfiguration configuration,
                                JMSVersionSupport versionSupport,
                                Session session,
-                               JmsPoolSessionProxyManager<JmsPoolSessionProxy> manager) {
+                               JmsSessionProxyManager<JmsSessionProxy> manager) {
         super(configuration, versionSupport, session, manager);
     }
 
@@ -38,7 +38,7 @@ public class JmsPoolSessionProxy extends JmsPoolAbstractSessionProxy<JmsPoolSess
     }
 
     @Override
-    protected JmsPoolSessionProxy self() {
+    protected JmsSessionProxy self() {
         return this;
     }
 }

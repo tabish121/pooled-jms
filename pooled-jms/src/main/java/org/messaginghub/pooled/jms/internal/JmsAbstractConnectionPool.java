@@ -37,11 +37,11 @@ import jakarta.jms.JMSException;
  *
  * @param <CP> the actual connection proxy type that will be pooled
  */
-public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractConnectionProxy<CP, ?>> {
+public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnectionProxy<CP, ?>> {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final Map<JmsPoolConnectionKey, JmsPoolKeyedConnectionPool> pools = new HashMap<>();
+    private final Map<JmsConnectionKey, JmsPoolKeyedConnectionPool> pools = new HashMap<>();
 
     /**
      * The default value controlling time between checks for idle connections in the pool.
@@ -176,7 +176,7 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
         }
 
         return pools.computeIfAbsent(
-            new JmsPoolConnectionKey(username, password), key -> new JmsPoolKeyedConnectionPool(key)).nextAvailable();
+            new JmsConnectionKey(username, password), key -> new JmsPoolKeyedConnectionPool(key)).nextAvailable();
     }
 
     /**
@@ -250,7 +250,7 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
      */
     protected abstract CP createConnectionProxy(String username,
                                                 String password,
-                                                JmsPoolConnectionProxyManager<CP> manager) throws JMSException;
+                                                JmsConnectionProxyManager<CP> manager) throws JMSException;
 
     private void scheduleIdleCheckTaskIfNeeded() {
         if (connectionCheckInterval > 0 && isStarted()) {
@@ -261,13 +261,13 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
         }
     }
 
-    private class JmsPoolKeyedConnectionPool implements JmsPoolConnectionProxyManager<CP> {
+    private class JmsPoolKeyedConnectionPool implements JmsConnectionProxyManager<CP> {
 
         private final Deque<CP> connections = new ArrayDeque<>();
 
-        private final JmsPoolConnectionKey connectionKey;
+        private final JmsConnectionKey connectionKey;
 
-        JmsPoolKeyedConnectionPool(JmsPoolConnectionKey connectionKey) {
+        JmsPoolKeyedConnectionPool(JmsConnectionKey connectionKey) {
             this.connectionKey = connectionKey;
         }
 
@@ -348,7 +348,7 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
         }
 
         protected void scheduledConnectionsCheck() {
-            synchronized (JmsPoolAbstractConnectionPool.this) {
+            synchronized (JmsAbstractConnectionPool.this) {
                 connections.removeIf(connection -> {
                     final boolean remove = !connection.checkIsUsable();
 
@@ -373,7 +373,7 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
 
         @Override
         public CP tryAcquireReference(CP connection) throws JMSException {
-            synchronized (JmsPoolAbstractConnectionPool.this) {
+            synchronized (JmsAbstractConnectionPool.this) {
                 // If for some reason a caller trying to add registrations to a connection
                 // encounters a connection that has already failed we just need to ensure we
                 // have cleaned up and signal that the acquire attempt failed.
@@ -397,7 +397,7 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
 
         @Override
         public CP tryReleaseReference(CP connection) {
-            synchronized (JmsPoolAbstractConnectionPool.this) {
+            synchronized (JmsAbstractConnectionPool.this) {
                 connection.releaseReference();
 
                 // Test on return of reference from any owner of the connection and if
@@ -421,7 +421,7 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
 
         @Override
         public CP invalidateConnection(CP connection) {
-            synchronized (JmsPoolAbstractConnectionPool.this) {
+            synchronized (JmsAbstractConnectionPool.this) {
                 connections.remove(connection);
 
                 try {

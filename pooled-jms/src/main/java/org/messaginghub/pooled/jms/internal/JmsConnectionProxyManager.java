@@ -24,7 +24,7 @@ import jakarta.jms.JMSException;
  *
  * @param <CP> the actual connection proxy type that is managed by this instance
  */
-public interface JmsPoolConnectionProxyManager<CP extends JmsPoolAbstractConnectionProxy<CP, ?>> {
+public interface JmsConnectionProxyManager<CP extends JmsAbstractConnectionProxy<CP, ?>> {
 
     /**
      * Called from the owned connection proxy when an additional reference is requested

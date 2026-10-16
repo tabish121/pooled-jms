@@ -20,8 +20,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.transaction.xa.XAResource;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolXAConnectionProxy;
-import org.messaginghub.pooled.jms.internal.JmsPoolXASessionProxy;
+import org.messaginghub.pooled.jms.internal.JmsXAConnectionProxy;
+import org.messaginghub.pooled.jms.internal.JmsXASessionProxy;
 
 import jakarta.jms.JMSException;
 import jakarta.jms.QueueSession;
@@ -55,7 +55,7 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
      * @param transactionManager
      * 		The transaction manager that this connection wrapper should use
      */
-    JmsPoolXAConnection(JmsPoolXAConnectionProxy connection, TransactionManager transactionManager) {
+    JmsPoolXAConnection(JmsXAConnectionProxy connection, TransactionManager transactionManager) {
         super(connection);
 
         this.transactionManager = transactionManager;
@@ -121,7 +121,7 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
                 }
             }
 
-            final JmsPoolXASessionProxy proxy = safeGetConnection().createSession(transacted, ackMode);
+            final JmsXASessionProxy proxy = safeGetConnection().createSession(transacted, ackMode);
             final JmsPoolXASession session = afterSessionCreated(new JmsPoolXASession(proxy, transacted, isXa));
 
             if (isXa) {
@@ -159,8 +159,8 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
     }
 
     @Override
-    protected JmsPoolXAConnectionProxy safeGetConnection() throws JMSException {
-        return (JmsPoolXAConnectionProxy) super.safeGetConnection();
+    protected JmsXAConnectionProxy safeGetConnection() throws JMSException {
+        return (JmsXAConnectionProxy) super.safeGetConnection();
     }
 
     @Override

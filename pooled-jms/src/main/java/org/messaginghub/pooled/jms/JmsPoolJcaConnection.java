@@ -19,7 +19,7 @@ package org.messaginghub.pooled.jms;
 import javax.transaction.xa.XAResource;
 
 import org.apache.geronimo.transaction.manager.WrapperNamedXAResource;
-import org.messaginghub.pooled.jms.internal.JmsPoolXAConnectionProxy;
+import org.messaginghub.pooled.jms.internal.JmsXAConnectionProxy;
 
 import jakarta.jms.JMSException;
 import jakarta.jms.XAConnection;
@@ -29,7 +29,7 @@ public class JmsPoolJcaConnection extends JmsPoolXAConnection implements XAConne
 
     private final String name;
 
-    JmsPoolJcaConnection(JmsPoolXAConnectionProxy connection, TransactionManager transactionManager, String name) {
+    JmsPoolJcaConnection(JmsXAConnectionProxy connection, TransactionManager transactionManager, String name) {
         super(connection, transactionManager);
 
         this.name = name;

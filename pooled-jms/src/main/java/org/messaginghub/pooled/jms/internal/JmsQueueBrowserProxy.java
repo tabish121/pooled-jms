@@ -27,16 +27,16 @@ import jakarta.jms.QueueBrowser;
 /**
  * JMS QueueBrowser proxy instance
  */
-public final class JmsPoolQueueBrowserProxy implements QueueBrowser {
+public final class JmsQueueBrowserProxy implements QueueBrowser {
 
-    private static final AtomicIntegerFieldUpdater<JmsPoolQueueBrowserProxy> CLOSED_UPDATER =
-        AtomicIntegerFieldUpdater.newUpdater(JmsPoolQueueBrowserProxy.class, "closed");
+    private static final AtomicIntegerFieldUpdater<JmsQueueBrowserProxy> CLOSED_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(JmsQueueBrowserProxy.class, "closed");
 
     private final QueueBrowser browser;
 
     private volatile int closed;
 
-    JmsPoolQueueBrowserProxy(QueueBrowser browser) {
+    JmsQueueBrowserProxy(QueueBrowser browser) {
         this.browser = browser;
     }
 
