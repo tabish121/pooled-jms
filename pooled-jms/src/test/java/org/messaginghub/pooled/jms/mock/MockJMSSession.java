@@ -476,7 +476,6 @@ public class MockJMSSession implements Session, QueueSession, TopicSession, Auto
     }
 
     void acknowledge() throws JMSException {
-        // TODO Auto-generated method stub
     }
 
     static void validateSessionMode(int mode) {
@@ -506,7 +505,6 @@ public class MockJMSSession implements Session, QueueSession, TopicSession, Auto
     }
 
     boolean isDestinationInUse(MockJMSTemporaryDestination destination) {
-        // TODO Auto-generated method stub
         return false;
     }
 

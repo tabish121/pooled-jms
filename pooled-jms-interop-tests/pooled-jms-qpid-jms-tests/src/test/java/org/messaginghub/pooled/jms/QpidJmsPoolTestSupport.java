@@ -107,7 +107,7 @@ public class QpidJmsPoolTestSupport {
         }
         int actualPort = acceptor.getActualPort();
 
-        LOG.error("Acceptor was bound to port " + actualPort);//TODO: level
+        LOG.info("Acceptor was bound to port " + actualPort);
 
         connectionURI = "amqp://localhost:" + actualPort;
 

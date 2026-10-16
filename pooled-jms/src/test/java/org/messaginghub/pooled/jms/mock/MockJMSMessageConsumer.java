@@ -60,7 +60,6 @@ public class MockJMSMessageConsumer implements MessageConsumer, AutoCloseable {
     }
 
     void start() {
-        // TODO Auto-generated method stub
     }
 
     //----- Consumer Configuration Methods -----------------------------------//
@@ -88,28 +87,23 @@ public class MockJMSMessageConsumer implements MessageConsumer, AutoCloseable {
     @Override
     public Message receive() throws JMSException {
         checkClosed();
-        // TODO Auto-generated method stub
         return null;
     }
 
     @Override
     public Message receive(long timeout) throws JMSException {
         checkClosed();
-        // TODO Auto-generated method stub
         return null;
     }
 
     @Override
     public Message receiveNoWait() throws JMSException {
         checkClosed();
-        // TODO Auto-generated method stub
         return null;
     }
 
     public <T> T receiveBody(Class<T> desired, long timeout) throws JMSException {
         checkClosed();
-        //checkMessageListener();
-        // TODO Auto-generated method stub
         return null;
     }
 
