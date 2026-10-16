@@ -18,7 +18,7 @@ package org.messaginghub.pooled.jms;
 
 import java.util.function.Consumer;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolMessageConsumerProxy;
+import org.messaginghub.pooled.jms.internal.JmsMessageConsumerProxy;
 
 import jakarta.jms.JMSException;
 import jakarta.jms.Topic;
@@ -29,7 +29,7 @@ import jakarta.jms.TopicSubscriber;
  */
 public class JmsPoolTopicSubscriber extends JmsPoolMessageConsumer implements TopicSubscriber, AutoCloseable {
 
-    JmsPoolTopicSubscriber(JmsPoolMessageConsumerProxy delegate, Consumer<JmsPoolMessageConsumer> onClose) {
+    JmsPoolTopicSubscriber(JmsMessageConsumerProxy delegate, Consumer<JmsPoolMessageConsumer> onClose) {
         super(delegate, onClose);
     }
 

@@ -16,7 +16,7 @@
  */
 package org.messaginghub.pooled.jms;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolConnectionProxyFactory;
+import org.messaginghub.pooled.jms.internal.JmsConnectionProxyFactory;
 
 import jakarta.jms.ConnectionFactory;
 import jakarta.jms.IllegalStateRuntimeException;
@@ -58,9 +58,9 @@ import jakarta.jms.JMSException;
  * non-negative value to configure the connection check thread to run, the implementation may enforce
  * a minimum time between eviction checks.
  */
-public final class JmsPoolConnectionFactory extends JmsPoolAbstractConnectionFactory<JmsPoolConnectionProxyFactory> {
+public final class JmsPoolConnectionFactory extends JmsPoolAbstractConnectionFactory<JmsConnectionProxyFactory> {
 
-    private final JmsPoolConnectionProxyFactory proxyFactory = new JmsPoolConnectionProxyFactory();
+    private final JmsConnectionProxyFactory proxyFactory = new JmsConnectionProxyFactory();
 
     /**
      * {@return a reference to the configured provider Connection factory}
@@ -80,7 +80,7 @@ public final class JmsPoolConnectionFactory extends JmsPoolAbstractConnectionFac
     }
 
     @Override
-    protected JmsPoolConnectionProxyFactory getConnectionFactoryProxy() {
+    protected JmsConnectionProxyFactory getConnectionFactoryProxy() {
         return proxyFactory;
     }
 

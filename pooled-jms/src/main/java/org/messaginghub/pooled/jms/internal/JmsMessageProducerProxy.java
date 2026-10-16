@@ -37,25 +37,25 @@ import jakarta.jms.TopicPublisher;
 /**
  * JMS MessageProducer proxy instance
  */
-public class JmsPoolMessageProducerProxy implements MessageProducer, TopicPublisher, QueueSender {
+public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher, QueueSender {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final JmsPoolAbstractSessionProxy<?> session;
+    private final JmsAbstractSessionProxy<?> session;
     private final MessageProducer producer;
     private final Destination destination;
-    private final BiConsumer<JmsPoolMessageProducerProxy, Destination> onClose;
-    private final BiConsumer<JmsPoolMessageProducerProxy, Destination> onDestroy;
+    private final BiConsumer<JmsMessageProducerProxy, Destination> onClose;
+    private final BiConsumer<JmsMessageProducerProxy, Destination> onDestroy;
     private final Referenced referenced;
 
     private volatile boolean closed;
 
-    JmsPoolMessageProducerProxy(JmsPoolAbstractSessionProxy<?> session,
+    JmsMessageProducerProxy(JmsAbstractSessionProxy<?> session,
                                 MessageProducer producer,
                                 Destination destination,
                                 Referenced referenced,
-                                BiConsumer<JmsPoolMessageProducerProxy, Destination> onClose,
-                                BiConsumer<JmsPoolMessageProducerProxy, Destination> onDestroy) {
+                                BiConsumer<JmsMessageProducerProxy, Destination> onClose,
+                                BiConsumer<JmsMessageProducerProxy, Destination> onDestroy) {
         this.session = session;
         this.producer = producer;
         this.onClose = onClose;
@@ -71,7 +71,7 @@ public class JmsPoolMessageProducerProxy implements MessageProducer, TopicPublis
      *
      * @throws IllegalStateException if the message producer proxy is already closed
      */
-    public synchronized JmsPoolMessageProducerProxy acquire() throws IllegalStateException {
+    public synchronized JmsMessageProducerProxy acquire() throws IllegalStateException {
         checkClosed();
         referenced.acquire();
         return this;

@@ -16,7 +16,7 @@
  */
 package org.messaginghub.pooled.jms;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolSessionProxy;
+import org.messaginghub.pooled.jms.internal.JmsSessionProxy;
 
 import jakarta.jms.JMSException;
 
@@ -29,7 +29,7 @@ import jakarta.jms.JMSException;
  */
 public class JmsPoolSession extends JmsPoolAbstractSession {
 
-    JmsPoolSession(JmsPoolSessionProxy session, boolean transactional) {
+    JmsPoolSession(JmsSessionProxy session, boolean transactional) {
         super(session, transactional);
     }
 
@@ -39,8 +39,8 @@ public class JmsPoolSession extends JmsPoolAbstractSession {
     }
 
     @Override
-    protected JmsPoolSessionProxy safeGetSessionProxy() throws JMSException {
+    protected JmsSessionProxy safeGetSessionProxy() throws JMSException {
         checkClosed();
-        return (JmsPoolSessionProxy) this.session;
+        return (JmsSessionProxy) this.session;
     }
 }

@@ -19,7 +19,7 @@ package org.messaginghub.pooled.jms;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.function.Consumer;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolMessageProducerProxy;
+import org.messaginghub.pooled.jms.internal.JmsMessageProducerProxy;
 
 import jakarta.jms.CompletionListener;
 import jakarta.jms.Destination;
@@ -37,7 +37,7 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
     private static final AtomicIntegerFieldUpdater<JmsPoolMessageProducer> CLOSED_UPDATER =
         AtomicIntegerFieldUpdater.newUpdater(JmsPoolMessageProducer.class, "closed");
 
-    private final JmsPoolMessageProducerProxy messageProducer;
+    private final JmsMessageProducerProxy messageProducer;
     private final Consumer<JmsPoolMessageProducer> onClose;
     private final Destination destination;
 
@@ -51,7 +51,7 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
     private long timeToLive;
     private long deliveryDelay;
 
-    JmsPoolMessageProducer(JmsPoolMessageProducerProxy messageProducer, Destination destination, Consumer<JmsPoolMessageProducer> onClose) throws JMSException {
+    JmsPoolMessageProducer(JmsMessageProducerProxy messageProducer, Destination destination, Consumer<JmsPoolMessageProducer> onClose) throws JMSException {
         this.messageProducer = messageProducer;
         this.destination = destination;
         this.anonymousProducer = destination == null;

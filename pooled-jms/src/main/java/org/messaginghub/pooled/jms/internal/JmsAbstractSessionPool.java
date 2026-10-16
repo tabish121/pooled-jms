@@ -35,12 +35,12 @@ import jakarta.jms.ResourceAllocationException;
  *
  * @param <SP> The type of the session proxy that is pooled in this instance
  */
-public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessionProxy<SP>> {
+public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<SP>> {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final Map<JmsPoolSessionKey, JmsPoolKeyedSessionsPool> pools = new HashMap<>();
-    private final JmsPoolConnectionConfiguration configuration;
+    private final Map<JmsSessionKey, JmsPoolKeyedSessionsPool> pools = new HashMap<>();
+    private final JmsConnectionProxyConfiguration configuration;
 
     private boolean destroyed;
 
@@ -50,7 +50,7 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
      * @param configuration
      * 		Immutable configuration that should be used by this session pool
      */
-    JmsPoolAbstractSessionPool(JmsPoolConnectionConfiguration configuration) {
+    JmsAbstractSessionPool(JmsConnectionProxyConfiguration configuration) {
         this.configuration = configuration;
     }
 
@@ -133,7 +133,7 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
      * @throws JMSException if a new session cannot be created to match the demand
      */
     public synchronized SP nextSession(boolean transacted, int sessionMode) throws JMSException {
-        return pools.computeIfAbsent(new JmsPoolSessionKey(transacted, sessionMode), key -> new JmsPoolKeyedSessionsPool(key)).nextIdle();
+        return pools.computeIfAbsent(new JmsSessionKey(transacted, sessionMode), key -> new JmsPoolKeyedSessionsPool(key)).nextIdle();
     }
 
     /**
@@ -174,7 +174,7 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
      */
     protected abstract SP createSessionProxy(boolean transacted,
                                              int sessionMode,
-                                             JmsPoolSessionProxyManager<SP> manager) throws JMSException;
+                                             JmsSessionProxyManager<SP> manager) throws JMSException;
 
     private void checkedIsDestroyed() throws IllegalStateException {
         if (destroyed) {
@@ -183,14 +183,14 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
     }
 
     // Expected to operate under the lock of the parent session pool
-    private class JmsPoolKeyedSessionsPool implements JmsPoolSessionProxyManager<SP> {
+    private class JmsPoolKeyedSessionsPool implements JmsSessionProxyManager<SP> {
 
-        private final JmsPoolSessionKey sessionKey;
+        private final JmsSessionKey sessionKey;
 
         private final Queue<SP> activeSessions;
         private final Queue<SP> idleSessions;
 
-        JmsPoolKeyedSessionsPool(JmsPoolSessionKey sessionKey) {
+        JmsPoolKeyedSessionsPool(JmsSessionKey sessionKey) {
             this.sessionKey = sessionKey;
             this.activeSessions = new ArrayDeque<SP>(getMaxSessions());
             this.idleSessions = new ArrayDeque<SP>(getMaxIdleSessions());
@@ -229,7 +229,7 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
             idleSessions.clear();
 
             // Signal any waiters to wake up and see that the pool is now closed.
-            JmsPoolAbstractSessionPool.this.notifyAll();
+            JmsAbstractSessionPool.this.notifyAll();
         }
 
         public SP nextIdle() throws JMSException {
@@ -245,9 +245,9 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
                     if (isBlockIfLimitReached() && timeout != 0) {
                         try {
                             if (timeout > 0) {
-                                JmsPoolAbstractSessionPool.this.wait(getBlockIfLimitReachedTimeout());
+                                JmsAbstractSessionPool.this.wait(getBlockIfLimitReachedTimeout());
                             } else {
-                                JmsPoolAbstractSessionPool.this.wait();
+                                JmsAbstractSessionPool.this.wait();
                             }
                         } catch (InterruptedException e) {
                             continue;
@@ -293,7 +293,7 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
 
         @Override
         public SP releaseSession(SP session) {
-            synchronized (JmsPoolAbstractSessionPool.this) {
+            synchronized (JmsAbstractSessionPool.this) {
                 // Check the returned session to try and detect closed while being
                 // returned and also check that the idle sessions queue isn't full.
                 // If either of those cases occurs we just destroy the session and
@@ -307,7 +307,7 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
                 }
 
                 // Signal waiters to check if a session can be taken now.
-                JmsPoolAbstractSessionPool.this.notifyAll();
+                JmsAbstractSessionPool.this.notifyAll();
             }
 
             return session;
@@ -315,7 +315,7 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
 
         @Override
         public SP closeSession(SP session) {
-            synchronized (JmsPoolAbstractSessionPool.this) {
+            synchronized (JmsAbstractSessionPool.this) {
                 activeSessions.remove(session);
                 idleSessions.remove(session);
 
@@ -326,7 +326,7 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
                 }
 
                 // Signal waiters to check if a session can be taken now.
-                JmsPoolAbstractSessionPool.this.notifyAll();
+                JmsAbstractSessionPool.this.notifyAll();
             }
 
             return session;

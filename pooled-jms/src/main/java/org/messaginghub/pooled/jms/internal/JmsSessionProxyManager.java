@@ -22,7 +22,7 @@ package org.messaginghub.pooled.jms.internal;
  *
  * @param <SP> the actual session proxy type that is managed by this instance
  */
-public interface JmsPoolSessionProxyManager<SP extends JmsPoolAbstractSessionProxy<SP>> {
+public interface JmsSessionProxyManager<SP extends JmsAbstractSessionProxy<SP>> {
 
     /**
      * Should be called from the child session proxy when it has been released by its

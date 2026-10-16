@@ -20,7 +20,7 @@ import java.util.Enumeration;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.function.Consumer;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolQueueBrowserProxy;
+import org.messaginghub.pooled.jms.internal.JmsQueueBrowserProxy;
 
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
@@ -35,12 +35,12 @@ public class JmsPoolQueueBrowser implements QueueBrowser, AutoCloseable {
     private static final AtomicIntegerFieldUpdater<JmsPoolQueueBrowser> CLOSED_UPDATER =
         AtomicIntegerFieldUpdater.newUpdater(JmsPoolQueueBrowser.class, "closed");
 
-    private final JmsPoolQueueBrowserProxy queueBrowser;
+    private final JmsQueueBrowserProxy queueBrowser;
     private final Consumer<JmsPoolQueueBrowser> onClose;
 
     private volatile int closed;
 
-    JmsPoolQueueBrowser(JmsPoolQueueBrowserProxy delegate, Consumer<JmsPoolQueueBrowser> onClose) {
+    JmsPoolQueueBrowser(JmsQueueBrowserProxy delegate, Consumer<JmsPoolQueueBrowser> onClose) {
         this.queueBrowser = delegate;
         this.onClose = onClose;
     }

@@ -21,7 +21,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolAbstractConnectionProxy;
+import org.messaginghub.pooled.jms.internal.JmsAbstractConnectionProxy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,7 +61,7 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
     /**
      * The wrapped connection which can become null once the wrapper is closed.
      */
-    protected final JmsPoolAbstractConnectionProxy<?, ?> connection;
+    protected final JmsAbstractConnectionProxy<?, ?> connection;
 
     /**
      * An exception listener assigned by the parent pooled connection factory.
@@ -88,7 +88,7 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
      * @param connection
      *      The Connection proxy that wraps a connection created by the provider library.
      */
-    public JmsPoolAbstractConnection(JmsPoolAbstractConnectionProxy<?, ?> connection) {
+    public JmsPoolAbstractConnection(JmsAbstractConnectionProxy<?, ?> connection) {
         this.connection = connection;
         this.connection.addExceptionConsumer(exceptionConsumer);
     }
@@ -399,7 +399,7 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
      *
      * @throws JMSException if the the connection has already been closed.
      */
-    protected JmsPoolAbstractConnectionProxy<?, ?> safeGetConnection() throws JMSException {
+    protected JmsAbstractConnectionProxy<?, ?> safeGetConnection() throws JMSException {
         checkClosed();
         return this.connection;
     }

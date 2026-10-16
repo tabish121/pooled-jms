@@ -20,8 +20,8 @@ import java.beans.ExceptionListener;
 import java.lang.invoke.MethodHandles;
 import java.util.Properties;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolAbstractConnectionProxyFactory;
-import org.messaginghub.pooled.jms.internal.JmsPoolConnectionProxy;
+import org.messaginghub.pooled.jms.internal.JmsAbstractConnectionProxyFactory;
+import org.messaginghub.pooled.jms.internal.JmsConnectionProxy;
 import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +39,7 @@ import jakarta.jms.Session;
 import jakarta.jms.TopicConnection;
 import jakarta.jms.TopicConnectionFactory;
 
-public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstractConnectionProxyFactory<?, ?>> implements ConnectionFactory, QueueConnectionFactory, TopicConnectionFactory {
+public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConnectionProxyFactory<?, ?>> implements ConnectionFactory, QueueConnectionFactory, TopicConnectionFactory {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -547,7 +547,7 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsPoolAbstract
      * @param password
      * 		The password to use when creating the connection.
      *
-     * @return a new {@link JmsPoolConnection} that wraps a given {@link JmsPoolConnectionProxy}
+     * @return a new {@link JmsPoolConnection} that wraps a given {@link JmsConnectionProxy}
      *
      * @throws JMSException if an error occurs while creating the new {@link Connection} instance.
      */

@@ -16,7 +16,7 @@
  */
 package org.messaginghub.pooled.jms;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolConnectionProxy;
+import org.messaginghub.pooled.jms.internal.JmsConnectionProxy;
 
 import jakarta.jms.Connection;
 import jakarta.jms.JMSException;
@@ -44,7 +44,7 @@ public class JmsPoolConnection extends JmsPoolAbstractConnection {
      * @param connection
      *      The Connection proxy that wraps a connection created by the provider library.
      */
-    public JmsPoolConnection(JmsPoolConnectionProxy connection) {
+    public JmsPoolConnection(JmsConnectionProxy connection) {
         super(connection);
     }
 
@@ -69,8 +69,8 @@ public class JmsPoolConnection extends JmsPoolAbstractConnection {
     }
 
     @Override
-    protected JmsPoolConnectionProxy safeGetConnection() throws JMSException {
+    protected JmsConnectionProxy safeGetConnection() throws JMSException {
         checkClosed();
-        return (JmsPoolConnectionProxy) this.connection;
+        return (JmsConnectionProxy) this.connection;
     }
 }

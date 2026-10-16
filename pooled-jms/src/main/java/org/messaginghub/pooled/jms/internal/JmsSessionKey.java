@@ -19,7 +19,7 @@ package org.messaginghub.pooled.jms.internal;
 /**
  * A cache key for the session details used to locate PooledSession instances.
  */
-final class JmsPoolSessionKey {
+final class JmsSessionKey {
 
     private final boolean transacted;
     private final int ackMode;
@@ -33,7 +33,7 @@ final class JmsPoolSessionKey {
      * @param ackMode
      * 		Session acknowledgement mode assigned to this key
      */
-    public JmsPoolSessionKey(boolean transacted, int ackMode) {
+    public JmsSessionKey(boolean transacted, int ackMode) {
         this.transacted = transacted;
         this.ackMode = ackMode;
         this.hashCode = computeHash(transacted, ackMode);
@@ -64,7 +64,7 @@ final class JmsPoolSessionKey {
             return true;
         }
 
-        if (obj instanceof JmsPoolSessionKey other) {
+        if (obj instanceof JmsSessionKey other) {
             if (hashCode == other.hashCode && ackMode == other.ackMode && transacted == other.transacted) {
                 return true;
             }

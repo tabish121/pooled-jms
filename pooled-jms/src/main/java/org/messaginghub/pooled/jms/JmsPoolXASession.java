@@ -18,7 +18,7 @@ package org.messaginghub.pooled.jms;
 
 import javax.transaction.xa.XAResource;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolXASessionProxy;
+import org.messaginghub.pooled.jms.internal.JmsXASessionProxy;
 import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
 
 import jakarta.jms.JMSException;
@@ -39,7 +39,7 @@ public class JmsPoolXASession extends JmsPoolAbstractSession implements XASessio
 
     private boolean inXATransaction;
 
-    JmsPoolXASession(JmsPoolXASessionProxy session, boolean transactional, boolean inXATransaction) {
+    JmsPoolXASession(JmsXASessionProxy session, boolean transactional, boolean inXATransaction) {
         super(session, transactional);
 
         this.inXATransaction = inXATransaction;
@@ -69,7 +69,7 @@ public class JmsPoolXASession extends JmsPoolAbstractSession implements XASessio
 
     @Override
     public XAResource getXAResource() {
-        final JmsPoolXASessionProxy session;
+        final JmsXASessionProxy session;
 
         try {
             session = safeGetSessionProxy();
@@ -94,9 +94,9 @@ public class JmsPoolXASession extends JmsPoolAbstractSession implements XASessio
     }
 
     @Override
-    protected JmsPoolXASessionProxy safeGetSessionProxy() throws JMSException {
+    protected JmsXASessionProxy safeGetSessionProxy() throws JMSException {
         checkClosed();
-        return (JmsPoolXASessionProxy) session;
+        return (JmsXASessionProxy) session;
     }
 
     /**

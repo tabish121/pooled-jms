@@ -33,16 +33,16 @@ import jakarta.jms.XAConnectionFactory;
  * @param <CF> The actual type of the Connection factory this proxy factory uses
  * @param <CP> The type of the connection proxy created by this factory
  */
-public abstract class JmsPoolAbstractConnectionProxyFactory<CF, CP extends JmsPoolAbstractConnectionProxy<CP, ?>> {
+public abstract class JmsAbstractConnectionProxyFactory<CF, CP extends JmsAbstractConnectionProxy<CP, ?>> {
 
-    private final JmsPoolConnectionConfiguration configuration = new JmsPoolConnectionConfiguration();
-    private final JmsPoolAbstractConnectionPool<CP> connectionPool;
+    private final JmsConnectionProxyConfiguration configuration = new JmsConnectionProxyConfiguration();
+    private final JmsAbstractConnectionPool<CP> connectionPool;
 
     /**
      * Creates the pooling connection factory in the started state but the application must configure
      * a backing {@link ConnectionFactory} before using any method in this object.
      */
-    public JmsPoolAbstractConnectionProxyFactory() {
+    public JmsAbstractConnectionProxyFactory() {
         this.connectionPool = createConnectionPool();
     }
 
@@ -461,7 +461,7 @@ public abstract class JmsPoolAbstractConnectionProxyFactory<CF, CP extends JmsPo
 
     //----- Internal implementation ------------------------------------------//
 
-    JmsPoolConnectionConfiguration getConfiguration() {
+    JmsConnectionProxyConfiguration getConfiguration() {
         return configuration;
     }
 
@@ -472,6 +472,6 @@ public abstract class JmsPoolAbstractConnectionProxyFactory<CF, CP extends JmsPo
      *
      * @return a new internal JMS connection pooling instance for use by this factory.
      */
-    protected abstract JmsPoolAbstractConnectionPool<CP> createConnectionPool();
+    protected abstract JmsAbstractConnectionPool<CP> createConnectionPool();
 
 }

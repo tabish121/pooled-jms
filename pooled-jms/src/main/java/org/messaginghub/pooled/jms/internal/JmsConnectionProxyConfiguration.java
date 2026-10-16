@@ -21,7 +21,7 @@ package org.messaginghub.pooled.jms.internal;
  * configuration data is set at the time of the creation of a wrapped JMS connection
  * and cannot be altered during that connection's lifetime.
  */
-class JmsPoolConnectionConfiguration {
+class JmsConnectionProxyConfiguration {
 
     public static final int DEFAULT_MAX_SESSIONS_PER_CONNECTION = 500;
     public static final int DEFAULT_CONNECTION_IDLE_TIMEOUT = 30_000;
@@ -45,7 +45,7 @@ class JmsPoolConnectionConfiguration {
     /**
      * Create a configuration based on the defined defaults.
      */
-    public JmsPoolConnectionConfiguration() {}
+    public JmsConnectionProxyConfiguration() {}
 
     /**
      * Creates a copy of the provided configuration instance.
@@ -53,7 +53,7 @@ class JmsPoolConnectionConfiguration {
      * @param configuration
      * 	The configuration to copy into the newly constructed configuration object.
      */
-    public JmsPoolConnectionConfiguration(JmsPoolConnectionConfiguration configuration) {
+    public JmsConnectionProxyConfiguration(JmsConnectionProxyConfiguration configuration) {
         this.maxSessionsPerConnection = configuration.maxSessionsPerConnection;
         this.maxIdleSessionsPerConnection = configuration.maxIdleSessionsPerConnection;
         this.connectionIdleTimeout = configuration.connectionIdleTimeout;
@@ -135,13 +135,13 @@ class JmsPoolConnectionConfiguration {
      *
      * @return an immutable snapshot of the current state of the connection configuration
      */
-    public JmsPoolConnectionConfiguration snapshot() {
+    public JmsConnectionProxyConfiguration snapshot() {
         return new JmsPoolUnmodifiableConnectionConfiguration(this);
     }
 
-    private final class JmsPoolUnmodifiableConnectionConfiguration extends JmsPoolConnectionConfiguration {
+    private final class JmsPoolUnmodifiableConnectionConfiguration extends JmsConnectionProxyConfiguration {
 
-        public JmsPoolUnmodifiableConnectionConfiguration(JmsPoolConnectionConfiguration configuration) {
+        public JmsPoolUnmodifiableConnectionConfiguration(JmsConnectionProxyConfiguration configuration) {
             super(configuration);
         }
 

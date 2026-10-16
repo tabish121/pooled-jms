@@ -31,7 +31,7 @@ import jakarta.jms.XATopicSession;
 /**
  * The XA aware session proxy returned by pooled XA connection instances.
  */
-public class JmsPoolXASessionProxy extends JmsPoolAbstractSessionProxy<JmsPoolXASessionProxy> implements XASession, XATopicSession, XAQueueSession {
+public class JmsXASessionProxy extends JmsAbstractSessionProxy<JmsXASessionProxy> implements XASession, XATopicSession, XAQueueSession {
 
     private final XASession session;
 
@@ -47,10 +47,10 @@ public class JmsPoolXASessionProxy extends JmsPoolAbstractSessionProxy<JmsPoolXA
      * @param manager
      * 		The owner of this pooled session which receives event from this proxy
      */
-    JmsPoolXASessionProxy(JmsPoolConnectionConfiguration configuration,
+    JmsXASessionProxy(JmsConnectionProxyConfiguration configuration,
                           JMSVersionSupport versionSupport,
                           XASession session,
-                          JmsPoolSessionProxyManager<JmsPoolXASessionProxy> manager) {
+                          JmsSessionProxyManager<JmsXASessionProxy> manager) {
         super(configuration, versionSupport, session, manager);
 
         this.session = session;
@@ -81,7 +81,7 @@ public class JmsPoolXASessionProxy extends JmsPoolAbstractSessionProxy<JmsPoolXA
     }
 
     @Override
-    protected JmsPoolXASessionProxy self() {
+    protected JmsXASessionProxy self() {
         return this;
     }
 }

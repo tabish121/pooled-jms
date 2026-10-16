@@ -21,7 +21,7 @@ import java.util.Objects;
 /**
  * A cache key for the connection details
  */
-final class JmsPoolConnectionKey {
+final class JmsConnectionKey {
 
     private final String username;
     private final String password;
@@ -35,7 +35,7 @@ final class JmsPoolConnectionKey {
      * @param password
      * 		The password that this key represents
      */
-    public JmsPoolConnectionKey(String username, String password) {
+    public JmsConnectionKey(String username, String password) {
         this.password = password;
         this.username = username;
         this.hashCode = computeHash(username, password);
@@ -66,7 +66,7 @@ final class JmsPoolConnectionKey {
             return true;
         }
 
-        if (obj instanceof JmsPoolConnectionKey key) {
+        if (obj instanceof JmsConnectionKey key) {
             if (hashCode != key.hashCode) {
                 return false;
             }

@@ -19,7 +19,7 @@ package org.messaginghub.pooled.jms;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.function.Consumer;
 
-import org.messaginghub.pooled.jms.internal.JmsPoolMessageConsumerProxy;
+import org.messaginghub.pooled.jms.internal.JmsMessageConsumerProxy;
 
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
@@ -36,7 +36,7 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
         AtomicIntegerFieldUpdater.newUpdater(JmsPoolMessageConsumer.class, "closed");
 
     private final Consumer<JmsPoolMessageConsumer> onClose;
-    private final JmsPoolMessageConsumerProxy messageConsumer;
+    private final JmsMessageConsumerProxy messageConsumer;
 
     private volatile int closed;
 
@@ -46,7 +46,7 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
      * @param messageConsumer
      * 		the created consumer to wrap
      */
-    JmsPoolMessageConsumer(JmsPoolMessageConsumerProxy messageConsumer, Consumer<JmsPoolMessageConsumer> onClose) {
+    JmsPoolMessageConsumer(JmsMessageConsumerProxy messageConsumer, Consumer<JmsPoolMessageConsumer> onClose) {
         this.messageConsumer = messageConsumer;
         this.onClose = onClose;
     }
@@ -134,7 +134,7 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
      *
      * @return the message consumer proxy backing this wrapper.
      */
-    protected JmsPoolMessageConsumerProxy getDelegate() {
+    protected JmsMessageConsumerProxy getDelegate() {
         return messageConsumer;
     }
 }

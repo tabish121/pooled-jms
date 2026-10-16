@@ -25,10 +25,10 @@ import jakarta.jms.XASession;
  * An XA-aware shared connection from the pool. When a session is created and an XA transaction
  * is active, the session will automatically be enlisted in the current transaction.
  */
-public class JmsPoolXAConnectionProxy extends JmsPoolAbstractConnectionProxy<JmsPoolXAConnectionProxy, JmsPoolXASessionProxy> implements XAConnection {
+public class JmsXAConnectionProxy extends JmsAbstractConnectionProxy<JmsXAConnectionProxy, JmsXASessionProxy> implements XAConnection {
 
-    public JmsPoolXAConnectionProxy(JmsPoolConnectionConfiguration configuration, XAConnection connection,
-                                    JmsPoolConnectionProxyManager<JmsPoolXAConnectionProxy> manager) {
+    public JmsXAConnectionProxy(JmsConnectionProxyConfiguration configuration, XAConnection connection,
+                                    JmsConnectionProxyManager<JmsXAConnectionProxy> manager) {
         super(configuration, connection, manager);
     }
 
@@ -38,7 +38,7 @@ public class JmsPoolXAConnectionProxy extends JmsPoolAbstractConnectionProxy<Jms
     }
 
     @Override
-    protected JmsPoolXAConnectionProxy self() {
+    protected JmsXAConnectionProxy self() {
         return this;
     }
 
@@ -48,22 +48,22 @@ public class JmsPoolXAConnectionProxy extends JmsPoolAbstractConnectionProxy<Jms
     }
 
     @Override
-    protected JmsPoolXASessionsPool createSessionPool(JmsPoolConnectionConfiguration configuration) {
+    protected JmsPoolXASessionsPool createSessionPool(JmsConnectionProxyConfiguration configuration) {
         return new JmsPoolXASessionsPool(configuration);
     }
 
-    private class JmsPoolXASessionsPool extends JmsPoolAbstractSessionPool<JmsPoolXASessionProxy> {
+    private class JmsPoolXASessionsPool extends JmsAbstractSessionPool<JmsXASessionProxy> {
 
-        JmsPoolXASessionsPool(JmsPoolConnectionConfiguration configuration) {
+        JmsPoolXASessionsPool(JmsConnectionProxyConfiguration configuration) {
             super(configuration);
         }
 
         @Override
-        protected JmsPoolXASessionProxy createSessionProxy(boolean transacted, int sessionMode,
-                                                           JmsPoolSessionProxyManager<JmsPoolXASessionProxy> manager) throws JMSException {
+        protected JmsXASessionProxy createSessionProxy(boolean transacted, int sessionMode,
+                                                           JmsSessionProxyManager<JmsXASessionProxy> manager) throws JMSException {
             final XASession session = (XASession) getConnection().createSession(transacted, sessionMode);
 
-            return new JmsPoolXASessionProxy(getConfiguration(), getVersionSupport(), session, manager);
+            return new JmsXASessionProxy(getConfiguration(), getVersionSupport(), session, manager);
         }
     }
 }

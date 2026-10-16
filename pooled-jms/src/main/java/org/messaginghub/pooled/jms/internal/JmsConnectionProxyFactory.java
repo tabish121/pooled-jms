@@ -24,7 +24,7 @@ import jakarta.jms.JMSException;
  * JMS ConnectionFactory proxy that manages creating the pooled connections using the provided
  * provider ConnectionFactory or reusing connections from the pool.
  */
-public final class JmsPoolConnectionProxyFactory extends JmsPoolAbstractConnectionProxyFactory<ConnectionFactory, JmsPoolConnectionProxy> {
+public final class JmsConnectionProxyFactory extends JmsAbstractConnectionProxyFactory<ConnectionFactory, JmsConnectionProxy> {
 
     /**
      * The assigned {@link ConnectionFactory} fur use by this proxy factory
@@ -35,7 +35,7 @@ public final class JmsPoolConnectionProxyFactory extends JmsPoolAbstractConnecti
      * Creates the pooling connection factory in the started state but the application must configure
      * a backing {@link ConnectionFactory} before using any method in this object.
      */
-    public JmsPoolConnectionProxyFactory() {
+    public JmsConnectionProxyFactory() {
         super();
     }
 
@@ -54,14 +54,14 @@ public final class JmsPoolConnectionProxyFactory extends JmsPoolAbstractConnecti
         return new JmsPoolConnectionPool();
     }
 
-    private class JmsPoolConnectionPool extends JmsPoolAbstractConnectionPool<JmsPoolConnectionProxy> {
+    private class JmsPoolConnectionPool extends JmsAbstractConnectionPool<JmsConnectionProxy> {
 
         @Override
-        protected JmsPoolConnectionProxy createConnectionProxy(String username, String password,
-                                                               JmsPoolConnectionProxyManager<JmsPoolConnectionProxy> manager) throws JMSException {
+        protected JmsConnectionProxy createConnectionProxy(String username, String password,
+                                                               JmsConnectionProxyManager<JmsConnectionProxy> manager) throws JMSException {
             final Connection connection = getConnectionFactory().createConnection(username, password);
 
-            return new JmsPoolConnectionProxy(getConfiguration().snapshot(), connection, manager);
+            return new JmsConnectionProxy(getConfiguration().snapshot(), connection, manager);
         }
     }
 }

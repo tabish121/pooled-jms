@@ -32,10 +32,10 @@ import jakarta.jms.TopicSubscriber;
 /**
  * JMS MessageConsumer proxy instance
  */
-public class JmsPoolMessageConsumerProxy implements MessageConsumer, TopicSubscriber, QueueReceiver {
+public class JmsMessageConsumerProxy implements MessageConsumer, TopicSubscriber, QueueReceiver {
 
-    private static final AtomicIntegerFieldUpdater<JmsPoolMessageConsumerProxy> CLOSED_UPDATER =
-        AtomicIntegerFieldUpdater.newUpdater(JmsPoolMessageConsumerProxy.class, "closed");
+    private static final AtomicIntegerFieldUpdater<JmsMessageConsumerProxy> CLOSED_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(JmsMessageConsumerProxy.class, "closed");
 
     private final MessageConsumer consumer;
     private final Destination destination;
@@ -56,7 +56,7 @@ public class JmsPoolMessageConsumerProxy implements MessageConsumer, TopicSubscr
      * @param noLocal
      * 		The noLocal flag used when creating the message consumer
      */
-    public JmsPoolMessageConsumerProxy(MessageConsumer consumer, Destination destination, String selector, boolean noLocal) {
+    public JmsMessageConsumerProxy(MessageConsumer consumer, Destination destination, String selector, boolean noLocal) {
         this.consumer = consumer;
         this.destination = destination;
         this.selector = selector;

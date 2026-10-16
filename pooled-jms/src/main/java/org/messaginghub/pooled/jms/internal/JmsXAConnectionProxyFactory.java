@@ -24,7 +24,7 @@ import jakarta.jms.XAConnectionFactory;
  * A pooled {@link XAConnectionFactory} that automatically enlists sessions in the
  * current active XA transaction if any.
  */
-public class JmsPoolXAConnectionProxyFactory extends JmsPoolAbstractConnectionProxyFactory<XAConnectionFactory, JmsPoolXAConnectionProxy> {
+public class JmsXAConnectionProxyFactory extends JmsAbstractConnectionProxyFactory<XAConnectionFactory, JmsXAConnectionProxy> {
 
     /**
      * The assigned {@link XAConnectionFactory} fur use by this proxy factory
@@ -46,15 +46,15 @@ public class JmsPoolXAConnectionProxyFactory extends JmsPoolAbstractConnectionPr
         return new JmsPoolXAConnectionPool();
     }
 
-    private class JmsPoolXAConnectionPool extends JmsPoolAbstractConnectionPool<JmsPoolXAConnectionProxy> {
+    private class JmsPoolXAConnectionPool extends JmsAbstractConnectionPool<JmsXAConnectionProxy> {
 
         @Override
-        protected JmsPoolXAConnectionProxy createConnectionProxy(String username,
+        protected JmsXAConnectionProxy createConnectionProxy(String username,
                                                                  String password,
-                                                                 JmsPoolConnectionProxyManager<JmsPoolXAConnectionProxy> manager) throws JMSException {
+                                                                 JmsConnectionProxyManager<JmsXAConnectionProxy> manager) throws JMSException {
             final XAConnection connection = getConnectionFactory().createXAConnection(username, password);
 
-            return new JmsPoolXAConnectionProxy(getConfiguration().snapshot(), connection, manager);
+            return new JmsXAConnectionProxy(getConfiguration().snapshot(), connection, manager);
         }
     }
 }
