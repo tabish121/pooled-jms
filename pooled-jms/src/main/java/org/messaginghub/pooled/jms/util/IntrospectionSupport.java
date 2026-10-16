@@ -93,11 +93,10 @@ public final class IntrospectionSupport {
             }
 
             // If the type is null or it matches the needed type, just use the
-            // value directly
+            // value directly otherwise convert it
             if (value == null || value.getClass() == setter.getParameterTypes()[0]) {
                 setter.invoke(target, value);
             } else {
-                // We need to convert it
                 setter.invoke(target, convert(value, setter.getParameterTypes()[0]));
             }
             return true;

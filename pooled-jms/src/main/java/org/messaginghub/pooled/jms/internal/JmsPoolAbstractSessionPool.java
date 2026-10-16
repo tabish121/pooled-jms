@@ -32,6 +32,8 @@ import jakarta.jms.ResourceAllocationException;
 
 /**
  * Base for the session pool used to manage loaned and free sessions
+ *
+ * @param <SP> The type of the session proxy that is pooled in this instance
  */
 public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessionProxy<SP>> {
 
@@ -42,6 +44,12 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
 
     private boolean destroyed;
 
+    /**
+     * Creates an instance of the session pool with the provided immutable configuration
+     *
+     * @param configuration
+     * 		Immutable configuration that should be used by this session pool
+     */
     JmsPoolAbstractSessionPool(JmsPoolConnectionConfiguration configuration) {
         this.configuration = configuration;
     }
@@ -149,15 +157,30 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
         }
     }
 
+    /**
+     * The concrete session pool implementation should create a new session proxy instance that wraps
+     * a session from the provider connection.
+     *
+     * @param transacted
+     * 		Boolean indicating if the session instance being created is a transacted session
+     * @param sessionMode
+     * 		The assigned session mode the session instance is being created with
+     * @param manager
+     * 		The session proxy manager that owns the new session proxy instance once created
+     *
+     * @return the newly created session proxy instance
+     *
+     * @throws JMSException if an error occurs during creation of the provider session
+     */
+    protected abstract SP createSessionProxy(boolean transacted,
+                                             int sessionMode,
+                                             JmsPoolSessionProxyManager<SP> manager) throws JMSException;
+
     private void checkedIsDestroyed() throws IllegalStateException {
         if (destroyed) {
             throw new IllegalStateException("The JMS Session pool for this connection has been destroyed");
         }
     }
-
-    protected abstract SP createSessionProxy(boolean transacted,
-                                             int sessionMode,
-                                             JmsPoolSessionProxyManager<SP> onSessionDestroyed) throws JMSException;
 
     // Expected to operate under the lock of the parent session pool
     private class JmsPoolKeyedSessionsPool implements JmsPoolSessionProxyManager<SP> {
@@ -226,11 +249,11 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
                             } else {
                                 JmsPoolAbstractSessionPool.this.wait();
                             }
-
-                            timeout = Math.max(deadline - System.currentTimeMillis(), 0);
                         } catch (InterruptedException e) {
                             continue;
                         } finally {
+                            timeout = Math.max(deadline - System.currentTimeMillis(), 0);
+
                             checkedIsDestroyed();
                         }
 
@@ -244,7 +267,7 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
                 final SP session;
 
                 if (idleSessions.isEmpty()) {
-                    session = createSessionProxy(sessionKey.isTransacted(), sessionKey.getAckMode(), this);
+                    session = createSessionProxy(sessionKey.isTransacted(), sessionKey.getAcknowledgementMode(), this);
                 } else {
                     session = idleSessions.poll();
                 }
@@ -261,6 +284,12 @@ public abstract class JmsPoolAbstractSessionPool<SP extends JmsPoolAbstractSessi
 
             throw new ResourceAllocationException("Unknown Error: Could not provide a JMS session from the pool.");
         }
+
+        /*
+         * Below calls are made from the pooled session back into its manager and are required
+         * to lock the parent session pool instance to be thread safe against calls made to the
+         * overall session pool.
+         */
 
         @Override
         public SP releaseSession(SP session) {

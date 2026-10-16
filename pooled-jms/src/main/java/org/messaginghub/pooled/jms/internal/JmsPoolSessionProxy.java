@@ -20,6 +20,9 @@ import org.messaginghub.pooled.jms.util.JMSVersionSupport;
 
 import jakarta.jms.Session;
 
+/**
+ * JMS Session proxy instance for non-XA sessions
+ */
 public class JmsPoolSessionProxy extends JmsPoolAbstractSessionProxy<JmsPoolSessionProxy> {
 
     public JmsPoolSessionProxy(JmsPoolConnectionConfiguration configuration,

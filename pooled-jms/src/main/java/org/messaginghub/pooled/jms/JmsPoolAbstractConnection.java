@@ -17,9 +17,8 @@
 package org.messaginghub.pooled.jms;
 
 import java.lang.invoke.MethodHandles;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import org.messaginghub.pooled.jms.internal.JmsPoolAbstractConnectionProxy;
@@ -77,9 +76,9 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
     private volatile int closed;
 
     private final JmsPoolConnectionCallbacks callbacks = new JmsPoolConnectionCallbacks();
-    private final List<TemporaryQueue> managedTempQueues = Collections.synchronizedList(new ArrayList<>());
-    private final List<TemporaryTopic> managedTempTopics = Collections.synchronizedList(new ArrayList<>());
-    private final List<Session> managedSessions = Collections.synchronizedList(new ArrayList<>());
+    private final Set<TemporaryQueue> managedTempQueues = ConcurrentHashMap.newKeySet();
+    private final Set<TemporaryTopic> managedTempTopics = ConcurrentHashMap.newKeySet();
+    private final Set<Session> managedSessions = ConcurrentHashMap.newKeySet();
 
     /**
      * Creates a new JMS pool connection instance that uses the given connection proxy to
@@ -110,6 +109,9 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
 
     @Override
     public void stop() throws JMSException {
+        // Pooled connections cannot be stopped as they can be shared amongst multiple
+        // callers that would not be expecting the connection to be stopped without
+        // their knowledge.
         checkClosed();
     }
 
@@ -218,8 +220,6 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
     }
 
     //----- Metrics APIs -----------------------------------------------------//
-
-    // TODO: Should this be per connection wrapper or per shared connection instance?
 
     /**
      * Gets the total number of sessions managed by this connection wrapper.
@@ -368,6 +368,17 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
         });
     }
 
+    /**
+     * Should be called after a session has been created in order to enlist the session in tracking
+     * by this pooled connection instance.
+     *
+     * @param session
+     * 		The session that was created from this connections underlying session pool.
+     *
+     * @return the session instance that was passed to this method.
+     *
+     * @throws JMSException if an error occurs while adding the session to tracking.
+     */
     protected JmsPoolAbstractSession afterSessionCreated(JmsPoolAbstractSession session) throws JMSException {
         // Store the session so we can close the sessions that this Pooled JMS Connection
         // created in order to ensure that consumers etc are closed per the JMS contract.
@@ -380,12 +391,27 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
         return session;
     }
 
+    /**
+     * Checked get for the underlying connection proxy that will throw if this instance has
+     * already been closed.
+     *
+     * @return the underlying connection proxy instance.
+     *
+     * @throws JMSException if the the connection has already been closed.
+     */
     protected JmsPoolAbstractConnectionProxy<?, ?> safeGetConnection() throws JMSException {
         checkClosed();
         return this.connection;
     }
 
-    protected void onException(JMSException exception) {
+    /**
+     * Called from the underlying connection proxy when the provider connection triggers
+     * an exception listener callback. Each of the instances that holds a reference to the
+     * pooled connection will be signaled with the exception.
+     *
+     * @param exception the exception that triggered this call
+     */
+    protected final void onException(JMSException exception) {
         final ExceptionListener listener = exceptionListener;
 
         if (!isClosed() && listener != null) {

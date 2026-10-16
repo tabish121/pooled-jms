@@ -41,10 +41,16 @@ final class JmsPoolConnectionKey {
         this.hashCode = computeHash(username, password);
     }
 
+    /**
+     * {@return the password that is assigned to this connection key}
+     */
     public String getPassword() {
         return password;
     }
 
+    /**
+     * {@return the user name that is assigned to this connection key}
+     */
     public String getUserName() {
         return username;
     }
