@@ -17,7 +17,6 @@
 package org.messaginghub.pooled.jms.internal;
 
 import java.lang.invoke.MethodHandles;
-import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.function.BiConsumer;
 
 import org.messaginghub.pooled.jms.util.Referenced;
@@ -35,12 +34,12 @@ import jakarta.jms.QueueSender;
 import jakarta.jms.Topic;
 import jakarta.jms.TopicPublisher;
 
+/**
+ * JMS MessageProducer proxy instance
+ */
 public class JmsPoolMessageProducerProxy implements MessageProducer, TopicPublisher, QueueSender {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
-
-    private static final AtomicIntegerFieldUpdater<JmsPoolMessageProducerProxy> CLOSED_UPDATER =
-            AtomicIntegerFieldUpdater.newUpdater(JmsPoolMessageProducerProxy.class, "closed");
 
     private final JmsPoolAbstractSessionProxy<?> session;
     private final MessageProducer producer;
@@ -49,7 +48,7 @@ public class JmsPoolMessageProducerProxy implements MessageProducer, TopicPublis
     private final BiConsumer<JmsPoolMessageProducerProxy, Destination> onDestroy;
     private final Referenced referenced;
 
-    private volatile int closed;
+    private volatile boolean closed;
 
     JmsPoolMessageProducerProxy(JmsPoolAbstractSessionProxy<?> session,
                                 MessageProducer producer,
@@ -65,14 +64,27 @@ public class JmsPoolMessageProducerProxy implements MessageProducer, TopicPublis
         this.referenced = referenced;
     }
 
+    /**
+     * Attempts to take a new reference out on this message producer proxy
+     *
+     * @return this message producer proxy
+     *
+     * @throws IllegalStateException if the message producer proxy is already closed
+     */
     public synchronized JmsPoolMessageProducerProxy acquire() throws IllegalStateException {
         checkClosed();
         referenced.acquire();
         return this;
     }
 
+    /**
+     * Called to force the JMS message producer and this proxy to be closed and not be served
+     * again to any callers who create producers from the parent session.
+     */
     public synchronized void destroy() {
-        if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
+        if (!closed) {
+            closed = true;
+
             try {
                 producer.close();
             } catch (JMSException ex) {
@@ -91,7 +103,9 @@ public class JmsPoolMessageProducerProxy implements MessageProducer, TopicPublis
     public synchronized void close() {
         if (checkIfProducerSilentlyClosed()) {
             destroy();
-        } else if (referenced.release() && CLOSED_UPDATER.compareAndSet(this, 0, 1))  {
+        } else if (referenced.release() && !closed) {
+            closed = true;
+
             try {
                 producer.close();
             } catch (JMSException ex) {
@@ -106,23 +120,51 @@ public class JmsPoolMessageProducerProxy implements MessageProducer, TopicPublis
         }
     }
 
+    /**
+     * {@return if the JMS provider support delivery delay for its producers}
+     */
     public boolean isDelayedDeliverySupported() {
         return session.getVersionSupport().isDelayedDeliverySupported();
     }
 
+    /**
+     * Enforces that the producer does provide delivery delay support
+     *
+     * @throws JMSException if delivery delay is not supported by the provider
+     */
     public void enforceDelayedDeliverySupport() throws JMSException {
         session.getVersionSupport().enforceDelayedDeliverySupport();
     }
 
+    /**
+     * Enforces that the producer does provide JMS completion listener support
+     *
+     * @throws JMSException if completion listeners are not supported by the provider
+     */
     public void enforceCompletionListenerSupport() throws JMSException {
         session.getVersionSupport().enforceCompletionListenerSupport();
     }
 
+    /**
+     * Returns the proxied JMS message message producer instance if not already closed
+     *
+     * @return the proxied JMS message message producer instance if not already closed
+     *
+     * @throws JMSException if the message producer is already closed
+     */
     public MessageProducer getProviderMessageProducer() throws JMSException {
         checkClosed();
         return producer;
     }
 
+    /**
+     * Gets the JMS destination that this producer was created for which can be null
+     * if this is an anonymous producer.
+     *
+     * @return the JMS destination this producer send messages to
+     *
+     * @throws JMSException if the producer is already closed
+     */
     public Destination getProviderDestination() throws JMSException {
         checkClosed();
         return destination;
@@ -323,7 +365,7 @@ public class JmsPoolMessageProducerProxy implements MessageProducer, TopicPublis
      * @return <code>true</code> if the producer has been closed.
      */
     protected boolean isClosed() {
-        return closed > 0;
+        return closed;
     }
 
     /**

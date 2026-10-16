@@ -34,6 +34,8 @@ import jakarta.jms.JMSException;
 
 /**
  * Base for the connection pool used to manage loaned and free connections
+ *
+ * @param <CP> the actual connection proxy type that will be pooled
  */
 public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractConnectionProxy<CP, ?>> {
 
@@ -47,6 +49,11 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
     public static final long DEFAULT_TIME_BETWEEN_EVICTION_RUNS = -1;
 
     /**
+     * The minimum low bound for the time between eviction runs if not set to off (value is in milliseconds).
+     */
+    public static final long MIN_TIME_BETWEEN_EVICTION_RUNS = 1000;
+
+    /**
      * The default maximum number of connections to maintain in the connection pool, this value
      * will be over-written by a call to set the max connections after the factory is created.
      */
@@ -57,33 +64,60 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
     private ScheduledExecutorService scheduler;
     private boolean stopped;
 
-    JmsPoolAbstractConnectionPool() {}
-
+    /**
+     * {@return the currently configured maximum connection to keep in the pool}
+     */
     public synchronized int getMaxConnections() {
         return maxConnections;
     }
 
+    /**
+     * Sets the maximum number of connections that will be kept in the pool and shared
+     * amongst callers. The minimum allowed value is one, and will always be set if a lower
+     * value is passed. Any active connections in the pool beyond the new maximum are allowed
+     * to continue operating and will only be closed once they are no longer referenced by
+     * any user.
+     *
+     * @param maxConnections
+     * 		The maximum number of connection to keep in the pool.
+     */
     public synchronized void setMaxConnections(int maxConnections) {
-        this.maxConnections = maxConnections;
+        this.maxConnections = Math.max(DEFAULT_MAX_CONNECTIONS, maxConnections);
     }
 
+    /**
+     * {@return the currently configured connection check interval}
+     */
     public synchronized long getConnectionCheckInterval() {
         return connectionCheckInterval;
     }
 
+    /**
+     * Sets the time between checks of connections in the pool for both connection state and idle
+     * state validity. When the connection task runs it will check each connection to see if it
+     * is currently idle (no-references) and if so if the idle time exceeds the configure maximum
+     * idle period and if so close and remove that connection from the pool. If the connection
+     * survives that check it will also attempt to probe the provider connection to ensure it is
+     * still alive and usable and close and remove any connections that fail that check as well.
+     *
+     * @param connectionCheckInterval
+     * 		The interval to use to perform connection validity checks.
+     */
     public synchronized void setConnectionCheckInterval(long connectionCheckInterval) {
-        if (this.connectionCheckInterval == connectionCheckInterval) {
-            return;
+        if (this.connectionCheckInterval != connectionCheckInterval) {
+            if (connectionCheckInterval >= 0) {
+                connectionCheckInterval = Math.max(MIN_TIME_BETWEEN_EVICTION_RUNS, connectionCheckInterval);
+            }
+
+            this.connectionCheckInterval = connectionCheckInterval;
+
+            if (scheduler != null) {
+                scheduler.shutdownNow();
+                scheduler = null;
+            }
+
+            scheduleIdleCheckTaskIfNeeded();
         }
-
-        this.connectionCheckInterval = connectionCheckInterval;
-
-        if (scheduler != null) {
-            scheduler.shutdownNow();
-            scheduler = null;
-        }
-
-        scheduleIdleCheckTaskIfNeeded();
     }
 
     /**
@@ -145,6 +179,9 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
             new JmsPoolConnectionKey(username, password), key -> new JmsPoolKeyedConnectionPool(key)).nextAvailable();
     }
 
+    /**
+     * Closes and removes all connection from all sub-pools in this connection pool}
+     */
     public synchronized void clear() {
         if (isStarted()) {
             pools.forEach((k, v) -> v.clear());
@@ -195,6 +232,22 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
         return !stopped;
     }
 
+    /**
+     * The pool concrete implementation will provide this method implementation and return a newly
+     * allocated JMS session proxy that wraps a connection created using the provider connection
+     * factory.
+     *
+     * @param username
+     * 		The user name that was provided for the new connection
+     * @param password
+     * 		The password that was provided for the new connection
+     * @param manager
+     * 		The manager that will provide life-cycle APIs for the new connection proxy
+     *
+     * @return the newly create connection proxy instance that will be added to the pool.
+     *
+     * @throws JMSException if an error occurs while creating the new connection.
+     */
     protected abstract CP createConnectionProxy(String username,
                                                 String password,
                                                 JmsPoolConnectionProxyManager<CP> manager) throws JMSException;
@@ -221,9 +274,9 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
         public void clear() {
             connections.forEach(conn -> {
                 try {
-                    conn.doInvalidate();
+                    conn.closeConnection();
                 } catch (Exception ex) {
-                    // Ignore provider errors on close.
+                    LOG.trace("Suppressed an error while closing connection during clear", ex);
                 }
             });
             connections.clear();
@@ -273,13 +326,13 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
                     // Connections can idle out while just sitting in the pool and need
                     // to be closed, likewise the provider connection could fail which is
                     // tested during this call.
-                    if (connection.doCheckIsUsable()) {
+                    if (connection.checkIsUsable()) {
                         // Rotates the connection to the end of the queue allowing other
                         // connections to share the load of client requests.
                         connections.offer(connection);
                     } else {
                         try {
-                            connection.doInvalidate();
+                            connection.closeConnection();
                         } catch (Exception e) {
                             LOG.trace("Suppressed an error while cleaning up a unusable connection during checkout", e);
                         } finally {
@@ -297,11 +350,11 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
         protected void scheduledConnectionsCheck() {
             synchronized (JmsPoolAbstractConnectionPool.this) {
                 connections.removeIf(connection -> {
-                    final boolean remove = !connection.doCheckIsUsable();
+                    final boolean remove = !connection.checkIsUsable();
 
                     if (remove) {
                         try {
-                            connection.doInvalidate();
+                            connection.closeConnection();
                         } catch (Exception e) {
                             LOG.trace("Suppressed an error while cleaning up a unusable connection during timed checks", e);
                         }
@@ -322,15 +375,15 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
         public CP tryAcquireReference(CP connection) throws JMSException {
             synchronized (JmsPoolAbstractConnectionPool.this) {
                 // If for some reason a caller trying to add registrations to a connection
-                // encounter a connection that has already failed we just need to ensure we
+                // encounters a connection that has already failed we just need to ensure we
                 // have cleaned up and signal that the acquire attempt failed.
-                if (connection.doCheckIsUsable()) {
-                    connection.doAcquire();
+                if (connection.checkIsUsable()) {
+                    connection.acquireReference();
                 } else {
                     connections.remove(connection);
 
                     try {
-                        connection.doInvalidate();
+                        connection.closeConnection();
                     } catch (Exception e) {
                         LOG.trace("Suppressed an error while cleaning up a unusable connection from additional acquire", e);
                     }
@@ -345,16 +398,16 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
         @Override
         public CP tryReleaseReference(CP connection) {
             synchronized (JmsPoolAbstractConnectionPool.this) {
-                connection.doRelease();
+                connection.releaseReference();
 
                 // Test on return of reference from any owner of the connection and if
                 // the test fails remove it from the pool, we assume the other owners if
                 // any will become aware as calls to connection or its resources fail or
                 // will have seen any exception sent via the pooled connection exception
                 // listener notifications.
-                if (!connection.doCheckIsUsable()) {
+                if (!connection.checkIsUsable()) {
                     try {
-                        connection.doInvalidate();
+                        connection.closeConnection();
                     } catch (Exception e) {
                         LOG.trace("Suppressed an error while cleaning up a unusable connection during release", e);
                     } finally {
@@ -372,7 +425,7 @@ public abstract class JmsPoolAbstractConnectionPool<CP extends JmsPoolAbstractCo
                 connections.remove(connection);
 
                 try {
-                    connection.doInvalidate();
+                    connection.closeConnection();
                 } catch (Exception e) {
                     LOG.trace("Suppressed an error while cleaning up a closed connection at close", e);
                 }

@@ -25,6 +25,14 @@ final class JmsPoolSessionKey {
     private final int ackMode;
     private final int hashCode;
 
+    /**
+     * Create a new instance of the session key with the assigned values.
+     *
+     * @param transacted
+     * 		Session transactional flag assigned to this key
+     * @param ackMode
+     * 		Session acknowledgement mode assigned to this key
+     */
     public JmsPoolSessionKey(boolean transacted, int ackMode) {
         this.transacted = transacted;
         this.ackMode = ackMode;
@@ -36,11 +44,17 @@ final class JmsPoolSessionKey {
         return hashCode;
     }
 
+    /**
+     * {@return the transactional state that is assigned to this connection key}
+     */
     public boolean isTransacted() {
         return transacted;
     }
 
-    public int getAckMode() {
+    /**
+     * {@return the session acknowledgement mode that is assigned to this connection key}
+     */
+    public int getAcknowledgementMode() {
         return ackMode;
     }
 

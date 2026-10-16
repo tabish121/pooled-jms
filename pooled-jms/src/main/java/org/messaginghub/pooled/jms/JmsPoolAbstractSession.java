@@ -74,6 +74,14 @@ public abstract class JmsPoolAbstractSession implements Session, TopicSession, Q
 
     protected volatile int closed;
 
+    /**
+     * Creates the JMS pool wrapper around the pooled session proxy instance.
+     *
+     * @param session
+     * 		The session proxy that manages the provider session
+     * @param transactional
+     * 		Boolean flag indicating if this session is transactional or not
+     */
     JmsPoolAbstractSession(JmsPoolAbstractSessionProxy<?> session, boolean transactional) {
         this.session = session;
         this.transactional = transactional;

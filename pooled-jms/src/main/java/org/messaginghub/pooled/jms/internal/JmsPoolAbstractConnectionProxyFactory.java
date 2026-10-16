@@ -30,7 +30,7 @@ import jakarta.jms.XAConnectionFactory;
  * Base class for the the actual pooled connection factories that will be used to wrapped
  * proxy instances to the provider resources which then manage their lifetime and shared state.
  *
- * @param <CF> The type of the implementation connection proxy factory
+ * @param <CF> The actual type of the Connection factory this proxy factory uses
  * @param <CP> The type of the connection proxy created by this factory
  */
 public abstract class JmsPoolAbstractConnectionProxyFactory<CF, CP extends JmsPoolAbstractConnectionProxy<CP, ?>> {

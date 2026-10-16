@@ -46,6 +46,15 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
 
     private final TransactionManager transactionManager;
 
+    /**
+     * Creates the JMS connection wrapper with the given pooled connection proxy and the assigned
+     * transaction manager to use.
+     *
+     * @param connection
+     * 		A connection proxy instance that could be shared by other instances
+     * @param transactionManager
+     * 		The transaction manager that this connection wrapper should use
+     */
     JmsPoolXAConnection(JmsPoolXAConnectionProxy connection, TransactionManager transactionManager) {
         super(connection);
 
@@ -94,6 +103,8 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
 
     @Override
     protected JmsPoolXASession doCreateSession(boolean transacted, int ackMode) throws JMSException {
+        checkClosed();
+
         try {
             final boolean isXa = (transactionManager != null && transactionManager.getStatus() != Status.STATUS_NO_TRANSACTION);
 
@@ -161,6 +172,10 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
         return session.getXAResource();
     }
 
+    /**
+     * Synchronization type specific to the JMS pool session wrapper that helps to manage
+     * the lifetime of the pooled session wrapper
+     */
     protected class JmsPooledXASessionSynchronization implements jakarta.transaction.Synchronization {
 
         private final AtomicBoolean closed = new AtomicBoolean();
@@ -171,6 +186,12 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
             this.session = session;
         }
 
+        /**
+         * Closes this synchronization and invalidates the proxied session instance
+         * causing it to be closed and removed from the pool of session.
+         *
+         * @throws JMSException if an error occurs while performing this action
+         */
         public void fail() throws JMSException {
             if (closed.compareAndSet(false, true)) {
                 // Force the session to close and invalidate itself.
@@ -183,6 +204,11 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
             }
         }
 
+        /**
+         * Closes this synchronization and returns the managed proxy session to the pool
+         *
+         * @throws JMSException if an error occurs while performing this action
+         */
         public void close() throws JMSException {
             if (closed.compareAndSet(false, true)) {
                 try {
@@ -196,6 +222,7 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
 
         @Override
         public void beforeCompletion() {
+            // Nothing needed currently before the completion is handled
         }
 
         @Override

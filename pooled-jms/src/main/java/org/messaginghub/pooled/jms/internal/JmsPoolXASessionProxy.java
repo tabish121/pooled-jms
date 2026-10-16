@@ -28,10 +28,25 @@ import jakarta.jms.XAQueueSession;
 import jakarta.jms.XASession;
 import jakarta.jms.XATopicSession;
 
+/**
+ * The XA aware session proxy returned by pooled XA connection instances.
+ */
 public class JmsPoolXASessionProxy extends JmsPoolAbstractSessionProxy<JmsPoolXASessionProxy> implements XASession, XATopicSession, XAQueueSession {
 
     private final XASession session;
 
+    /**
+     * Creates the XA session proxy wrapper around the given {@link XASession} instance.
+     *
+     * @param configuration
+     * 		The immutable configuration applied to this session
+     * @param versionSupport
+     * 		A version support instance that provides helpers for features active on the current provider connection
+     * @param session
+     * 		The {@link XASession} instance that is being proxied
+     * @param manager
+     * 		The owner of this pooled session which receives event from this proxy
+     */
     JmsPoolXASessionProxy(JmsPoolConnectionConfiguration configuration,
                           JMSVersionSupport versionSupport,
                           XASession session,

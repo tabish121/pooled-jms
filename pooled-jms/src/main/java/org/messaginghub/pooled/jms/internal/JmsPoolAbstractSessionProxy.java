@@ -56,6 +56,8 @@ import jakarta.jms.TopicSession;
  * When the client code closes the session it is returned to the pool of available
  * sessions which will be used during the next call to create a session from the
  * parent connection.
+ *
+ * @param <SP> the actual session proxy type that will be in use for this instance.
  */
 public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSessionProxy<SP>> implements Session, TopicSession, QueueSession {
 
@@ -76,6 +78,18 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
 
     private volatile boolean closed;
 
+    /**
+     * Creates a new session proxy instance around a given provider JMS session
+     *
+     * @param configuration
+     * 		The immutable configuration this session proxy operates under
+     * @param versionSupprt
+     * 		The version support type that defines what the provider connection can support
+     * @param session
+     * 		The provider JMS session taken from the session pool
+     * @param manager
+     * 		The manager who owns this JMS session proxy and receives its events
+     */
     public JmsPoolAbstractSessionProxy(JmsPoolConnectionConfiguration configuration,
                                        JMSVersionSupport versionSupprt,
                                        Session session,
@@ -92,48 +106,21 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
         }
     }
 
+    /**
+     * {@return the concrete session proxy instance}
+     */
     protected abstract SP self();
 
-    @Override
-    public void close() {
-        manager.releaseSession(self());
-    }
-
-    public void destroy() {
-        manager.closeSession(self());
-    }
-
-    void internalClose() {
-        try {
-            session.close();
-        } catch (JMSException ex) {
-            LOG.trace("Ignoring exception while closing internal JMS session: " + ex.getMessage(), ex);
-        } finally {
-            closed = true;
-            anonymousProducer = null;
-            cachedProducers.clear();
-        }
-    }
-
-    boolean validateSession() {
-        try {
-            session.getTransacted();
-        } catch (IllegalStateException jmsISE) {
-            return false;
-        } catch (Exception ambiguous) {
-            // Unsure if session is still valid so continue as if it still is.
-        }
-
-        return true;
-    }
-
+    /**
+     * Gets the underlying JMS provider Session instance if this proxy is not already closed.
+     *
+     * @return the proxied JMS {@link Session}
+     *
+     * @throws JMSException if the session proxy is already closed.
+     */
     public Session getProviderSession() throws JMSException {
         checkClosed();
         return session;
-    }
-
-    JMSVersionSupport getVersionSupport() {
-        return versionSupport;
     }
 
     @Override
@@ -141,137 +128,18 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
         return getClass().getSimpleName() + "{ " + session + " ]";
     }
 
-    protected synchronized JmsPoolMessageProducerProxy getOrCreateProducer(Destination destination) throws JMSException {
-        JmsPoolMessageProducerProxy delegate = null;
-
-        if (isUseAnonymousProducer() || destination == null) {
-            delegate = anonymousProducer;
-
-            if (delegate == null) {
-                // Anonymous instance is not reference counted so create a fixed reference instance
-                delegate = new JmsPoolMessageProducerProxy(this,
-                                                           session.createProducer(null),
-                                                           null,
-                                                           new FixedReference(),
-                                                           this::onProducerClosed,
-                                                           this::onProducerDestroyed);
-
-                anonymousProducer = delegate;
-            }
-        } else {
-            delegate = cachedProducers.get(destination);
-
-            if (delegate == null) {
-                // Cached instance is held until evicted from the cache so take an additional reference on create.
-                delegate = new JmsPoolMessageProducerProxy(this,
-                                                           session.createProducer(destination),
-                                                           destination,
-                                                           new ReferenceCounted().acquire(),
-                                                           this::onProducerClosed,
-                                                           this::onProducerDestroyed);
-
-                cachedProducers.put(destination, delegate);
-            }
-        }
-
-        return delegate.acquire();
-    }
-
-    private synchronized void onProducerClosed(JmsPoolMessageProducerProxy producer, Destination destination) {
-        // Nothing done here currently but we could use this to track statistics later.
-    }
-
-    private void onProducerDestroyed(JmsPoolMessageProducerProxy producer, Destination destination) {
-        // Ensure that the anonymous reference are cleared of a destroyed producer resource or the
-        // cache is updated if enabled to remove the destroyed named producer.
-        if (producer == anonymousProducer) {
-            anonymousProducer = null;
-        } else {
-            cachedProducers.remove(destination);
-        }
-    }
-
-    private boolean isUseAnonymousProducer() {
-        return configuration.isUseAnonymousProducers();
+    @Override
+    public void close() {
+        manager.releaseSession(self());
     }
 
     /**
-     * Gets the state of the session closed flag.
-     *
-     * @return <code>true</code> if the session has been closed.
+     * Requests that the pool closes the underlying proxied session. This is generally used when
+     * the caller knows that the state of the provider session is such that it should be closed
+     * to allow a new clean instance to be created later.
      */
-    protected boolean isClosed() {
-        return closed;
-    }
-
-    /**
-     * Checks for closure of this session wrapper and throws if true.
-     *
-     * @throws IllegalStateException if the session is closed.
-     */
-    protected void checkClosed() throws IllegalStateException {
-        if (isClosed()) {
-            throw new IllegalStateException("Connection has already been closed");
-        }
-    }
-
-    protected void checkClosedRuntimeEx() throws IllegalStateRuntimeException {
-        if (isClosed()) {
-            throw new IllegalStateRuntimeException("Session has already been closed");
-        }
-    }
-
-    private static class ProducerLRUCache extends LRUCache<Destination, JmsPoolMessageProducerProxy> {
-
-        private static final long serialVersionUID = -1;
-
-        public ProducerLRUCache(int maximumCacheSize) {
-            super(maximumCacheSize);
-        }
-
-        @Override
-        protected void onCacheEviction(Map.Entry<Destination, JmsPoolMessageProducerProxy> eldest) {
-            // Closes the cache's reference to the producer which will close it fully
-            // if the producer is not reference currently by any other client code.
-            final JmsPoolMessageProducerProxy producer = eldest.getValue();
-            try {
-                producer.close();
-            } catch (Exception ex) {}
-        }
-    }
-
-    private static class DiscardingMap extends AbstractMap<Destination, JmsPoolMessageProducerProxy> {
-
-        private static final DiscardingMap INSTANCE = new DiscardingMap();
-
-        public static Map<Destination, JmsPoolMessageProducerProxy> getInstance() {
-            return INSTANCE;
-        }
-
-        @Override
-        public JmsPoolMessageProducerProxy put(Destination key, JmsPoolMessageProducerProxy value) {
-            return null;
-        }
-
-        @Override
-        public JmsPoolMessageProducerProxy get(Object key) {
-            return null;
-        }
-
-        @Override
-        public JmsPoolMessageProducerProxy remove(Object key) {
-            return null;
-        }
-
-        @Override
-        public void clear() {
-            // Nothing to do here.
-        }
-
-        @Override
-        public Set<Entry<Destination, JmsPoolMessageProducerProxy>> entrySet() {
-            return Collections.emptySet();
-        }
+    public void destroy() {
+        manager.closeSession(self());
     }
 
     //----- JMS Message producer create APIs ---------------------------------//
@@ -526,5 +394,183 @@ public abstract class JmsPoolAbstractSessionProxy<SP extends JmsPoolAbstractSess
     public void unsubscribe(String name) throws JMSException {
         checkClosed();
         session.unsubscribe(name);
+    }
+
+    //----- Internal APIs not meant for public use
+
+    void internalClose() {
+        try {
+            session.close();
+        } catch (JMSException ex) {
+            LOG.trace("Ignoring exception while closing internal JMS session: " + ex.getMessage(), ex);
+        } finally {
+            closed = true;
+            anonymousProducer = null;
+            cachedProducers.clear();
+        }
+    }
+
+    boolean validateSession() {
+        try {
+            session.getTransacted();
+        } catch (IllegalStateException jmsISE) {
+            return false;
+        } catch (Exception ambiguous) {
+            // Unsure if session is still valid so continue as if it still is.
+        }
+
+        return true;
+    }
+
+    JMSVersionSupport getVersionSupport() {
+        return versionSupport;
+    }
+
+    /**
+     * Returns a JMS message producer proxy either from a cache or by creating a new instance
+     *
+     * @param destination
+     * 		The destination the producer will send to (null if anonymous)
+     *
+     * @return a JMS message producer proxy that wraps the providers JMS message producer
+     *
+     * @throws JMSException if an error occurs while attempt to obtain a producer instance
+     */
+    protected synchronized JmsPoolMessageProducerProxy getOrCreateProducer(Destination destination) throws JMSException {
+        JmsPoolMessageProducerProxy delegate = null;
+
+        if (isUseAnonymousProducer() || destination == null) {
+            delegate = anonymousProducer;
+
+            if (delegate == null) {
+                // Anonymous instance is not reference counted so create a fixed reference instance
+                delegate = new JmsPoolMessageProducerProxy(this,
+                                                           session.createProducer(null),
+                                                           null,
+                                                           new FixedReference(),
+                                                           this::onProducerClosed,
+                                                           this::onProducerDestroyed);
+
+                anonymousProducer = delegate;
+            }
+        } else {
+            delegate = cachedProducers.get(destination);
+
+            if (delegate == null) {
+                // Cached instance is held until evicted from the cache so take an additional reference on create.
+                delegate = new JmsPoolMessageProducerProxy(this,
+                                                           session.createProducer(destination),
+                                                           destination,
+                                                           new ReferenceCounted().acquire(),
+                                                           this::onProducerClosed,
+                                                           this::onProducerDestroyed);
+
+                cachedProducers.put(destination, delegate);
+            }
+        }
+
+        return delegate.acquire();
+    }
+
+    private synchronized void onProducerClosed(JmsPoolMessageProducerProxy producer, Destination destination) {
+        // Nothing done here currently but we could use this to track statistics later.
+    }
+
+    private void onProducerDestroyed(JmsPoolMessageProducerProxy producer, Destination destination) {
+        // Ensure that the anonymous reference are cleared of a destroyed producer resource or the
+        // cache is updated if enabled to remove the destroyed named producer.
+        if (producer == anonymousProducer) {
+            anonymousProducer = null;
+        } else {
+            cachedProducers.remove(destination);
+        }
+    }
+
+    private boolean isUseAnonymousProducer() {
+        return configuration.isUseAnonymousProducers();
+    }
+
+    /**
+     * Gets the state of the session closed flag.
+     *
+     * @return <code>true</code> if the session has been closed.
+     */
+    protected boolean isClosed() {
+        return closed;
+    }
+
+    /**
+     * Checks for closure of this session wrapper and throws if true.
+     *
+     * @throws IllegalStateException if the session is closed.
+     */
+    protected void checkClosed() throws IllegalStateException {
+        if (isClosed()) {
+            throw new IllegalStateException("Connection has already been closed");
+        }
+    }
+
+    /**
+     * Checks for closure of this session wrapper and throws if true.
+     *
+     * @throws IllegalStateRuntimeException if the session is closed.
+     */
+    protected void checkClosedRuntimeEx() throws IllegalStateRuntimeException {
+        if (isClosed()) {
+            throw new IllegalStateRuntimeException("Session has already been closed");
+        }
+    }
+
+    private static class ProducerLRUCache extends LRUCache<Destination, JmsPoolMessageProducerProxy> {
+
+        private static final long serialVersionUID = -1;
+
+        public ProducerLRUCache(int maximumCacheSize) {
+            super(maximumCacheSize);
+        }
+
+        @Override
+        protected void onCacheEviction(Map.Entry<Destination, JmsPoolMessageProducerProxy> eldest) {
+            // Closes the cache's reference to the producer which will close it fully
+            // if the producer is not reference currently by any other client code.
+            final JmsPoolMessageProducerProxy producer = eldest.getValue();
+            try {
+                producer.close();
+            } catch (Exception ex) {}
+        }
+    }
+
+    private static class DiscardingMap extends AbstractMap<Destination, JmsPoolMessageProducerProxy> {
+
+        private static final DiscardingMap INSTANCE = new DiscardingMap();
+
+        public static Map<Destination, JmsPoolMessageProducerProxy> getInstance() {
+            return INSTANCE;
+        }
+
+        @Override
+        public JmsPoolMessageProducerProxy put(Destination key, JmsPoolMessageProducerProxy value) {
+            return null;
+        }
+
+        @Override
+        public JmsPoolMessageProducerProxy get(Object key) {
+            return null;
+        }
+
+        @Override
+        public JmsPoolMessageProducerProxy remove(Object key) {
+            return null;
+        }
+
+        @Override
+        public void clear() {
+            // Nothing to do here.
+        }
+
+        @Override
+        public Set<Entry<Destination, JmsPoolMessageProducerProxy>> entrySet() {
+            return Collections.emptySet();
+        }
     }
 }

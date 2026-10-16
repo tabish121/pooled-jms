@@ -44,6 +44,9 @@ import jakarta.jms.Topic;
  * Instances of this class are shared amongst one or more wrappers that are loaned to a JMS
  * client application that has requested to create a new connection from the factory and must
  * track the session objects that are loaned out for cleanup on close.
+ *
+ * @param <CP> the actual connection proxy type that this instance represents
+ * @param <SP> the session proxy type that the connection proxy will be creating
  */
 public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractConnectionProxy<CP, SP>,
                                                      SP extends JmsPoolAbstractSessionProxy<SP>> implements Connection, ExceptionListener {
@@ -63,7 +66,7 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
      */
     protected final Connection connection;
 
-    private volatile int destroyed;  // TODO consider different names for this state, invalid etc
+    private volatile int closed;
     private volatile long becameIdleAt;
     private ExceptionListener connectionFactoryExceptionListener;
 
@@ -91,26 +94,40 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
 
     protected abstract CP self();
 
+    /**
+     * Attempts to acquire an additional reference on this provider connection proxy
+     *
+     * @return this provider connection proxy instance
+     *
+     * @throws JMSException if the connection proxy is already closed
+     */
     public CP acquire() throws JMSException {
-        checkDestroyed();
+        checkClosed();
         return manager.tryAcquireReference(self());
     }
 
     @Override
     public void close() {
-        if (!isDestroyed()) {
+        if (!isClosed()) {
             manager.tryReleaseReference(self());
         }
     }
 
+    /**
+     * Returns the proxied JMS connection instance if not already closed
+     *
+     * @return the proxied JMS connection instance if not already closed
+     *
+     * @throws JMSException if the connection is already closed
+     */
     public Connection getProviderConnection() throws JMSException {
-        checkDestroyed();
+        checkClosed();
         return connection;
     }
 
     @Override
     public void start() throws JMSException {
-        checkDestroyed();
+        checkClosed();
 
         try {
             connection.start();
@@ -122,18 +139,18 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
 
     @Override
     public void stop() throws JMSException {
-        checkDestroyed();
+        checkClosed();
     }
 
     @Override
     public String getClientID() throws JMSException {
-        checkDestroyed();
+        checkClosed();
         return connection.getClientID();
     }
 
     @Override
     public void setClientID(String clientID) throws JMSException {
-        checkDestroyed();
+        checkClosed();
 
         // ignore repeated calls to setClientID() with the same client id
         // this could happen when a JMS component such as Spring that uses a
@@ -147,7 +164,7 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
 
     @Override
     public ConnectionMetaData getMetaData() throws JMSException {
-        checkDestroyed();
+        checkClosed();
         return connection.getMetaData();
     }
 
@@ -166,8 +183,21 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
         return doCreateSession(transacted, acknowledgeMode);
     }
 
+    /**
+     * Performs the session create and can be overridden by subclasses to create a more custom
+     * wrapper type if needed.
+     *
+     * @param transacted
+     * 		If the created session should be transactional
+     * @param acknowledgeMode
+     * 		What acknowledgement mode to use for the new session
+     *
+     * @return a newly obtained session from the underlying session pool
+     *
+     * @throws JMSException if an error occurs while creating the session wrapper
+     */
     protected SP doCreateSession(boolean transacted, int acknowledgeMode) throws JMSException {
-        checkDestroyed();
+        checkClosed();
 
         final SP session;
 
@@ -184,26 +214,26 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
 
     @Override
     public ConnectionConsumer createConnectionConsumer(Destination destination, String messageSelector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
-        checkDestroyed();
+        checkClosed();
         return connection.createConnectionConsumer(destination, messageSelector, sessionPool, maxMessages);
     }
 
     @Override
     public ConnectionConsumer createDurableConnectionConsumer(Topic topic, String subscriptionName, String messageSelector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
-        checkDestroyed();
+        checkClosed();
         return connection.createDurableConnectionConsumer(topic, subscriptionName, messageSelector, sessionPool, maxMessages);
     }
 
     @Override
     public ConnectionConsumer createSharedConnectionConsumer(Topic topic, String subscriptionName, String messageSelector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
-        checkDestroyed();
+        checkClosed();
         versionSupport.enforceSharedSubscriptionSupport();
         return connection.createSharedConnectionConsumer(topic, subscriptionName, messageSelector, sessionPool, maxMessages);
     }
 
     @Override
     public ConnectionConsumer createSharedDurableConnectionConsumer(Topic topic, String subscriptionName, String messageSelector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
-        checkDestroyed();
+        checkClosed();
         versionSupport.enforceSharedSubscriptionSupport();
         return connection.createSharedDurableConnectionConsumer(topic, subscriptionName, messageSelector, sessionPool, maxMessages);
     }
@@ -255,6 +285,11 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
         this.connectionFactoryExceptionListener = parentExceptionListener;
     }
 
+    /**
+     * This is the entry point for all exceptions sent for the proxied provider connection. From here
+     * we dispatch the exception to all shared connection instances that current hold a reference to this
+     * connection proxy.
+     */
     @Override
     public void onException(JMSException exception) {
         LOG.debug("Pooled connection onException: {}", exception.getMessage());
@@ -286,11 +321,30 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
         }
     }
 
+    /**
+     * The JMS Pool connection instances can register here to each receive a copy of any exception
+     * surfaced from the proxied provider connection.
+     *
+     * @param consumer
+     * 		The JMS {@link ExceptionListener} that will get a copy of any exception event
+     *
+     * @return this connection proxy instance.
+     */
     public CP addExceptionConsumer(ExceptionListener consumer) {
         exceptionListeners.add(Objects.requireNonNull(consumer));
         return self();
     }
 
+    /**
+     * The JMS Pool connection instances can unregister here when it is closed so that no future
+     * exception events are forwarded to it after it is closed as the proxied connection can be
+     * shared amongst many pooled connection instances.
+     *
+     * @param consumer
+     * 		The JMS {@link ExceptionListener} that should be unregistered
+     *
+     * @return this connection proxy instance.
+     */
     public CP removeExceptionConsumer(ExceptionListener consumer) {
         exceptionListeners.remove(consumer);
         return self();
@@ -306,12 +360,12 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
         this.connectionFactoryExceptionListener = listener;
     }
 
-    //----- Internal helper APIs and state checks
-
     @Override
     public String toString() {
         return getClass().getSimpleName() + "{ " + connectionId + " ]";
     }
+
+    //----- Internal connection proxy APIs not meant for public use
 
     JmsPoolConnectionConfiguration getConfiguration() {
         return configuration;
@@ -325,19 +379,23 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
         return connection;
     }
 
-    void doAcquire() {
+    void acquireReference() {
         becameIdleAt = 0;
         referenced.acquire();
     }
 
-    void doRelease() {
-        if (referenced.release()) {
+    boolean releaseReference() {
+        final boolean unreferenced = referenced.release();
+
+        if (unreferenced) {
             sessionPool.idle();
             becameIdleAt = System.currentTimeMillis();
         }
+
+        return unreferenced;
     }
 
-    void doInvalidate() {
+    void closeConnection() {
         try {
             sessionPool.destroy();
         } catch (Exception ex) {
@@ -351,12 +409,12 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
         }
     }
 
-    boolean doCheckIsUsable() {
+    boolean checkIsUsable() {
         final int idleTimeout = configuration.getConnectionIdleTimeout();
 
         boolean usable = true;
 
-        if (isDestroyed()) {
+        if (isClosed()) {
             usable = false;
         } else if (referenced.isUnreferenced() && idleTimeout > 0 && becameIdleAt != 0 && ((System.currentTimeMillis() - becameIdleAt) >= idleTimeout)) {
             LOG.trace("Connection has expired or was closed: {} and will be discarded", connection);
@@ -380,10 +438,22 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
         return !referenced.isReferenced();
     }
 
+    /**
+     * The concrete connection proxy type creates the instance of a session pool and returns it
+     * for use as a generic type.
+     *
+     * @param configuration
+     * 		The immutable configuration that is applied to the created session pool
+     *
+     * @return the newly created session pool used by this connection proxy instance.
+     */
     protected abstract JmsPoolAbstractSessionPool<SP> createSessionPool(JmsPoolConnectionConfiguration configuration);
 
-    protected boolean isDestroyed() {
-        return destroyed > 0;
+    /**
+     * {@return <code>true</code> when the underlying provider is actually closed}
+     */
+    protected boolean isClosed() {
+        return closed > 0;
     }
 
     /**
@@ -391,8 +461,8 @@ public abstract class JmsPoolAbstractConnectionProxy<CP extends JmsPoolAbstractC
      *
      * @throws IllegalStateException if the connection is closed permanently.
      */
-    protected void checkDestroyed() throws IllegalStateException {
-        if (isDestroyed()) {
+    protected void checkClosed() throws IllegalStateException {
+        if (isClosed()) {
             throw new IllegalStateException("Shared pooled Connection has already been closed");
         }
     }

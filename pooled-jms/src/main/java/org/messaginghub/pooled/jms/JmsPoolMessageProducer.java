@@ -341,6 +341,9 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
 
     //----- Internal Implementation ------------------------------------------//
 
+    /**
+     * {@return the wrapped producer proxy without checking the closed state}
+     */
     protected MessageProducer getDelegate() {
         return messageProducer;
     }

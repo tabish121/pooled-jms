@@ -24,6 +24,9 @@ import jakarta.jms.JMSException;
 import jakarta.jms.Queue;
 import jakarta.jms.QueueBrowser;
 
+/**
+ * JMS QueueBrowser proxy instance
+ */
 public final class JmsPoolQueueBrowserProxy implements QueueBrowser {
 
     private static final AtomicIntegerFieldUpdater<JmsPoolQueueBrowserProxy> CLOSED_UPDATER =
@@ -37,6 +40,13 @@ public final class JmsPoolQueueBrowserProxy implements QueueBrowser {
         this.browser = browser;
     }
 
+    /**
+     * Returns the proxied JMS message queue browser instance if not already closed
+     *
+     * @return the proxied JMS message queue browser instance if not already closed
+     *
+     * @throws JMSException if the queue browser is already closed
+     */
     public QueueBrowser getProviderQueueBrowser() throws JMSException {
         checkClosed();
         return browser;

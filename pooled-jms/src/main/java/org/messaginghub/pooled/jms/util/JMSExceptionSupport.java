@@ -66,8 +66,8 @@ public final class JMSExceptionSupport {
      * @return a JMSException instance.
      */
     public static JMSException create(String message, Throwable cause) {
-        if (cause instanceof JMSException) {
-            return (JMSException) cause;
+        if (cause instanceof JMSException match) {
+            return match;
         }
 
         if (cause.getCause() instanceof JMSException actualCause) {

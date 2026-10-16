@@ -19,14 +19,44 @@ package org.messaginghub.pooled.jms.internal;
 import jakarta.jms.JMSException;
 
 /**
+ * An interface type that represents the owner of a connection proxy who should be
+ * signaled when a connection proxy has specific events in its life-cylce triggered.
  *
+ * @param <CP> the actual connection proxy type that is managed by this instance
  */
 public interface JmsPoolConnectionProxyManager<CP extends JmsPoolAbstractConnectionProxy<CP, ?>> {
 
+    /**
+     * Called from the owned connection proxy when an additional reference is requested
+     *
+     * @param connection
+     * 		The connection proxy instance invoking this method
+     *
+     * @return the connection proxy instance invoking this method
+     *
+     * @throws JMSException if the connection is already unreferenced and cannot give a new reference
+     */
     CP tryAcquireReference(CP connection) throws JMSException;
 
+    /**
+     * Called from the owned connection proxy when a reference is being released
+     *
+     * @param connection
+     * 		The connection proxy instance invoking this method
+     *
+     * @return the connection proxy instance invoking this method
+     */
     CP tryReleaseReference(CP connection);
 
+    /**
+     * Called from the owned connection proxy when the connection is being treated as failed
+     * and it should be closed and all its resources also closed.
+     *
+     * @param connection
+     * 		The connection proxy instance invoking this method
+     *
+     * @return the connection proxy instance invoking this method
+     */
     CP invalidateConnection(CP connection);
 
 }

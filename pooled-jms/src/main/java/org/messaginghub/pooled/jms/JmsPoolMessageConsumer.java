@@ -37,6 +37,7 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
 
     private final Consumer<JmsPoolMessageConsumer> onClose;
     private final JmsPoolMessageConsumerProxy messageConsumer;
+
     private volatile int closed;
 
     /**

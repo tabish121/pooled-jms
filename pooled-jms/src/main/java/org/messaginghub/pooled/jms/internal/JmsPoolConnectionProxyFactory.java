@@ -20,6 +20,10 @@ import jakarta.jms.Connection;
 import jakarta.jms.ConnectionFactory;
 import jakarta.jms.JMSException;
 
+/**
+ * JMS ConnectionFactory proxy that manages creating the pooled connections using the provided
+ * provider ConnectionFactory or reusing connections from the pool.
+ */
 public final class JmsPoolConnectionProxyFactory extends JmsPoolAbstractConnectionProxyFactory<ConnectionFactory, JmsPoolConnectionProxy> {
 
     /**

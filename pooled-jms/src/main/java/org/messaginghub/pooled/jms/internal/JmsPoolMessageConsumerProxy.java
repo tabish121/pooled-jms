@@ -29,6 +29,9 @@ import jakarta.jms.QueueReceiver;
 import jakarta.jms.Topic;
 import jakarta.jms.TopicSubscriber;
 
+/**
+ * JMS MessageConsumer proxy instance
+ */
 public class JmsPoolMessageConsumerProxy implements MessageConsumer, TopicSubscriber, QueueReceiver {
 
     private static final AtomicIntegerFieldUpdater<JmsPoolMessageConsumerProxy> CLOSED_UPDATER =
@@ -41,6 +44,18 @@ public class JmsPoolMessageConsumerProxy implements MessageConsumer, TopicSubscr
 
     private volatile int closed;
 
+    /**
+     * Creates the JMS message consumer proxy instance
+     *
+     * @param consumer
+     * 		The provider JMS message consumer instance
+     * @param destination
+     * 		The destination this message consumer instance reads from
+     * @param selector
+     * 		The selector that was used when creating the message consumer
+     * @param noLocal
+     * 		The noLocal flag used when creating the message consumer
+     */
     public JmsPoolMessageConsumerProxy(MessageConsumer consumer, Destination destination, String selector, boolean noLocal) {
         this.consumer = consumer;
         this.destination = destination;
@@ -48,6 +63,13 @@ public class JmsPoolMessageConsumerProxy implements MessageConsumer, TopicSubscr
         this.noLocal = noLocal;
     }
 
+    /**
+     * Returns the proxied JMS message consumer instance if not already closed
+     *
+     * @return the proxied JMS message consumer instance if not already closed
+     *
+     * @throws JMSException if the message consumer is already closed
+     */
     public MessageConsumer getProviderMessageConsumer() throws JMSException {
         checkClosed();
         return consumer;
