@@ -51,11 +51,11 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
     private volatile boolean closed;
 
     JmsMessageProducerProxy(JmsAbstractSessionProxy<?> session,
-                                MessageProducer producer,
-                                Destination destination,
-                                Referenced referenced,
-                                BiConsumer<JmsMessageProducerProxy, Destination> onClose,
-                                BiConsumer<JmsMessageProducerProxy, Destination> onDestroy) {
+                            MessageProducer producer,
+                            Destination destination,
+                            Referenced referenced,
+                            BiConsumer<JmsMessageProducerProxy, Destination> onClose,
+                            BiConsumer<JmsMessageProducerProxy, Destination> onDestroy) {
         this.session = session;
         this.producer = producer;
         this.onClose = onClose;

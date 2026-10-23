@@ -342,6 +342,9 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         cf.setMaxSessionsPerConnection(NUM_SESSIONS);
         cf.setMaxIdleSessionsPerConnection(NUM_IDLE_SESSIONS);
 
+        assertEquals(NUM_SESSIONS, cf.getMaxSessionsPerConnection());
+        assertEquals(NUM_IDLE_SESSIONS, cf.getMaxIdleSessionsPerConnection());
+
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
         assertEquals(0, connection.getNumActiveSessions());
         List<Session> sessions = new ArrayList<>();
@@ -374,6 +377,8 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         cf.setMaxSessionsPerConnection(NUM_SESSIONS);
         cf.setMaxIdleSessionsPerConnection(NUM_IDLE_SESSIONS);
         cf.setBlockIfSessionPoolIsFull(false);
+
+        assertFalse(cf.isBlockIfSessionPoolIsFull());
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
         assertEquals(0, connection.getNumActiveSessions());
@@ -575,6 +580,9 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
     public void testCachedProducersEnabledReturnsCached() throws Exception {
         cf.setUseAnonymousProducers(false);
         cf.setExplicitProducerCacheSize(2);
+
+        assertFalse(cf.isUseAnonymousProducers());
+        assertEquals(2, cf.getExplicitProducerCacheSize());
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
@@ -1015,5 +1023,18 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         sender3.send(session.createMessage());
 
         connection.close();
+    }
+
+    @Test
+    public void testSessionRunInvokesPooledSessionRun() throws Exception {
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+        // Mock session throws as it doesn't not pretend to support this
+        assertThrows(JMSRuntimeException.class, () -> session.run());
+
+        session.close();
+
+        assertThrows(JMSRuntimeException.class, () -> session.run());
     }
 }

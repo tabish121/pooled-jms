@@ -560,7 +560,11 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
     public void testConnectionFailuresWhenMarkedFaultTolerant() throws Exception {
         final CountDownLatch failed = new CountDownLatch(1);
 
+        assertFalse(cf.isFaultTolerantConnections());
+
         cf.setFaultTolerantConnections(true); // Should keep connection open on exception.
+
+        assertTrue(cf.isFaultTolerantConnections());
 
         final JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
 

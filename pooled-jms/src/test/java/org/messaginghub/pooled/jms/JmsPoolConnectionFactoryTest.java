@@ -462,4 +462,18 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         connections.clear();
         cf.stop();
     }
+
+    @Test
+    public void testFailOnCreateContextIfNoConnectionFactorySet() throws Exception {
+        cf = new JmsPoolConnectionFactory();
+        cf.setMaxConnections(1);
+        cf.setUseProviderJMSContext(true);
+        cf.setConnectionCheckInterval(1000);
+
+        assertThrows(IllegalStateRuntimeException.class, () -> cf.createContext());
+        assertThrows(IllegalStateRuntimeException.class, () -> cf.createContext(null, null));
+        assertThrows(IllegalStateRuntimeException.class, () -> cf.createContext("test", "test"));
+        assertThrows(IllegalStateRuntimeException.class, () -> cf.createContext("test", null));
+        assertThrows(IllegalStateRuntimeException.class, () -> cf.createContext(null, "test"));
+    }
 }

@@ -26,7 +26,7 @@ import jakarta.jms.Session;
 public class JmsConnectionProxy extends JmsAbstractConnectionProxy<JmsConnectionProxy, JmsSessionProxy> {
 
     JmsConnectionProxy(JmsConnectionProxyConfiguration configuration, Connection connection,
-                           JmsConnectionProxyManager<JmsConnectionProxy> manager) {
+                       JmsConnectionProxyManager<JmsConnectionProxy> manager) {
         super(configuration, connection, manager);
     }
 

@@ -48,9 +48,9 @@ public class JmsXASessionProxy extends JmsAbstractSessionProxy<JmsXASessionProxy
      * 		The owner of this pooled session which receives event from this proxy
      */
     JmsXASessionProxy(JmsConnectionProxyConfiguration configuration,
-                          JMSVersionSupport versionSupport,
-                          XASession session,
-                          JmsSessionProxyManager<JmsXASessionProxy> manager) {
+                      JMSVersionSupport versionSupport,
+                      XASession session,
+                      JmsSessionProxyManager<JmsXASessionProxy> manager) {
         super(configuration, versionSupport, session, manager);
 
         this.session = session;

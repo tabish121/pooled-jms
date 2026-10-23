@@ -91,9 +91,9 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
      * 		The manager who owns this JMS session proxy and receives its events
      */
     public JmsAbstractSessionProxy(JmsConnectionProxyConfiguration configuration,
-                                       JMSVersionSupport versionSupprt,
-                                       Session session,
-                                       JmsSessionProxyManager<SP> manager) {
+                                   JMSVersionSupport versionSupprt,
+                                   Session session,
+                                   JmsSessionProxyManager<SP> manager) {
         this.configuration = configuration;
         this.versionSupport = versionSupprt;
         this.session = session;

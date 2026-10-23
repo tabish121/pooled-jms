@@ -28,7 +28,7 @@ import jakarta.jms.XASession;
 public class JmsXAConnectionProxy extends JmsAbstractConnectionProxy<JmsXAConnectionProxy, JmsXASessionProxy> implements XAConnection {
 
     public JmsXAConnectionProxy(JmsConnectionProxyConfiguration configuration, XAConnection connection,
-                                    JmsConnectionProxyManager<JmsXAConnectionProxy> manager) {
+                                JmsConnectionProxyManager<JmsXAConnectionProxy> manager) {
         super(configuration, connection, manager);
     }
 

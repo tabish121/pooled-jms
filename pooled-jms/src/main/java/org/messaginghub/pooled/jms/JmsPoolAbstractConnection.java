@@ -230,7 +230,7 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
      * @throws JMSException if the connection has been closed.
      */
     public int getNumSessions() throws JMSException {
-        return safeGetConnection().getNumSessions();
+        return getStatistics().getSessionCount();
     }
 
     /**
@@ -241,7 +241,7 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
      * @throws JMSException if the connection has been closed.
      */
     public int getNumActiveSessions() throws JMSException {
-        return safeGetConnection().getNumActiveSessions();
+        return getStatistics().getActiveSessionCount();
     }
 
     /**
@@ -252,7 +252,18 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
      * @throws JMSException if the connection has been closed.
      */
     public int getNumtIdleSessions() throws JMSException {
-        return safeGetConnection().getNumIdleSessions();
+        return getStatistics().getIdleSessionCount();
+    }
+
+    /**
+     * Return the statistics API object assigned to this pooled connection factory.
+     *
+     * @return an instance of the pooled connection statistics API
+     *
+     * @throws JMSException if an error occurs while accessing the statistics API
+     */
+    public JmsPoolConnectionStatistics getStatistics() throws JMSException {
+        return safeGetConnection().getStatistics();
     }
 
     //----- Internal support methods -----------------------------------------//
