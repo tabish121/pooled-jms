@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import org.messaginghub.pooled.jms.JmsPoolConnectionStatistics;
 import org.messaginghub.pooled.jms.util.JMSVersionSupport;
 import org.messaginghub.pooled.jms.util.ReferenceCounted;
 import org.slf4j.Logger;
@@ -71,8 +72,8 @@ public abstract class JmsAbstractConnectionProxy<CP extends JmsAbstractConnectio
     private ExceptionListener connectionFactoryExceptionListener;
 
     JmsAbstractConnectionProxy(JmsConnectionProxyConfiguration configuration,
-                                   Connection connection,
-                                   JmsConnectionProxyManager<CP> manager) {
+                               Connection connection,
+                               JmsConnectionProxyManager<CP> manager) {
         this.configuration = configuration;
         this.connection = connection;
         this.connectionId = connection.toString();
@@ -90,6 +91,13 @@ public abstract class JmsAbstractConnectionProxy<CP extends JmsAbstractConnectio
         } catch (JMSException ex) {
             LOG.warn("Could not set exception listener on create of ConnectionPool");
         }
+    }
+
+    /**
+     * {@return an instance of the statistics API for this pooling connection proxy}
+     */
+    public JmsPoolConnectionStatistics getStatistics() {
+        return sessionPool;
     }
 
     protected abstract CP self();
@@ -238,29 +246,6 @@ public abstract class JmsAbstractConnectionProxy<CP extends JmsAbstractConnectio
         return connection.createSharedDurableConnectionConsumer(topic, subscriptionName, messageSelector, sessionPool, maxMessages);
     }
 
-    //----- Statistics APIs related to resources from this connection
-
-    /**
-     * {@return the total number of sessions both idle and actively loaned out from this connection}
-     */
-    public int getNumSessions() {
-        return sessionPool.getSessionCount();
-    }
-
-    /**
-     * {@return the total number of Sessions that are in the Session pool but not loaned out}
-     */
-    public int getNumIdleSessions() {
-        return sessionPool.getIdleSessionCount();
-    }
-
-    /**
-     * {@return the total number of Session's that have been loaned to PooledConnection instances}
-     */
-    public int getNumActiveSessions() {
-        return sessionPool.getActiveSessionCount();
-    }
-
     //----- API dealing with ExceptionListener registration and management
 
     /**
@@ -395,7 +380,7 @@ public abstract class JmsAbstractConnectionProxy<CP extends JmsAbstractConnectio
         return unreferenced;
     }
 
-    void closeConnection() {
+    void internalClose() {
         try {
             sessionPool.destroy();
         } catch (Exception ex) {

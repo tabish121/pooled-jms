@@ -18,14 +18,19 @@ package org.messaginghub.pooled.jms.internal;
 
 import java.lang.invoke.MethodHandles;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
+import org.messaginghub.pooled.jms.JmsPoolConnectionFactoryStatistics;
+import org.messaginghub.pooled.jms.JmsPoolConnectionStatistics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,16 +42,24 @@ import jakarta.jms.JMSException;
  *
  * @param <CP> the actual connection proxy type that will be pooled
  */
-public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnectionProxy<CP, ?>> {
+public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnectionProxy<CP, ?>> implements JmsPoolConnectionFactoryStatistics {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final Map<JmsConnectionKey, JmsPoolKeyedConnectionPool> pools = new HashMap<>();
+    private record JmsConnectionKey(String username, String password) {}
+
+    private final Map<JmsConnectionKey, JmsKeyedConnectionPool> pools = new HashMap<>();
+
+    /**
+     * Indicates that periodic connection checks are not enabled and connections are only checked on
+     * checkout and return.
+     */
+    public static final long PERIODIC_CONNECTION_CHECK_DISABLED = -1;
 
     /**
      * The default value controlling time between checks for idle connections in the pool.
      */
-    public static final long DEFAULT_TIME_BETWEEN_EVICTION_RUNS = -1;
+    public static final long DEFAULT_TIME_BETWEEN_EVICTION_RUNS = PERIODIC_CONNECTION_CHECK_DISABLED;
 
     /**
      * The minimum low bound for the time between eviction runs if not set to off (value is in milliseconds).
@@ -59,15 +72,15 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
      */
     public static final int DEFAULT_MAX_CONNECTIONS = 1;
 
-    private int maxConnections = DEFAULT_MAX_CONNECTIONS;
-    private long connectionCheckInterval = DEFAULT_TIME_BETWEEN_EVICTION_RUNS;
+    private volatile int maxConnections = DEFAULT_MAX_CONNECTIONS;
+    private volatile long connectionCheckInterval = DEFAULT_TIME_BETWEEN_EVICTION_RUNS;
     private ScheduledExecutorService scheduler;
-    private boolean stopped;
+    private volatile boolean stopped;
 
     /**
      * {@return the currently configured maximum connection to keep in the pool}
      */
-    public synchronized int getMaxConnections() {
+    public int getMaxConnections() {
         return maxConnections;
     }
 
@@ -88,7 +101,7 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
     /**
      * {@return the currently configured connection check interval}
      */
-    public synchronized long getConnectionCheckInterval() {
+    public long getConnectionCheckInterval() {
         return connectionCheckInterval;
     }
 
@@ -107,6 +120,8 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
         if (this.connectionCheckInterval != connectionCheckInterval) {
             if (connectionCheckInterval >= 0) {
                 connectionCheckInterval = Math.max(MIN_TIME_BETWEEN_EVICTION_RUNS, connectionCheckInterval);
+            } else {
+                connectionCheckInterval = PERIODIC_CONNECTION_CHECK_DISABLED;
             }
 
             this.connectionCheckInterval = connectionCheckInterval;
@@ -120,9 +135,7 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
         }
     }
 
-    /**
-     * {@return the total number of connections that are currently idle and active in this connection pool}
-     */
+    @Override
     public synchronized int getConnectionCount() {
         final AtomicInteger count = new AtomicInteger();
 
@@ -131,9 +144,16 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
         return count.get();
     }
 
-    /**
-     * {@return the number of connections that are currently idle in this connection pool}
-     */
+    @Override
+    public synchronized int getActiveConnectionCount() {
+        final AtomicInteger count = new AtomicInteger();
+
+        pools.values().forEach(pool -> count.addAndGet(pool.getNumActive()));
+
+        return count.get();
+    }
+
+    @Override
     public synchronized int getIdleConnectionCount() {
         final AtomicInteger count = new AtomicInteger();
 
@@ -142,15 +162,83 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
         return count.get();
     }
 
-    /**
-     * {@return the number of connections that are currently loaned out from this connection pool}
-     */
-    public synchronized int getActiveCountCount() {
-        final AtomicInteger count = new AtomicInteger();
+    @Override
+    public synchronized int getConnectionCount(String username, String password) {
+        final JmsConnectionKey key = new JmsConnectionKey(username, password);
+        final JmsKeyedConnectionPool pool = pools.get(key);
 
-        pools.values().forEach(pool -> count.addAndGet(pool.getNumActive()));
+        if (pool != null) {
+            return pool.getNumConnections();
+        } else {
+            return 0;
+        }
+    }
 
-        return count.get();
+    @Override
+    public synchronized int getActiveConnectionCount(String username, String password) {
+        final JmsConnectionKey key = new JmsConnectionKey(username, password);
+        final JmsKeyedConnectionPool pool = pools.get(key);
+
+        if (pool != null) {
+            return pool.getNumActive();
+        } else {
+            return 0;
+        }
+    }
+
+    @Override
+    public synchronized int getIdleConnectionCount(String username, String password) {
+        final JmsConnectionKey key = new JmsConnectionKey(username, password);
+        final JmsKeyedConnectionPool pool = pools.get(key);
+
+        if (pool != null) {
+            return pool.getNumIdle();
+        } else {
+            return 0;
+        }
+    }
+
+    @Override
+    public synchronized void foreach(Consumer<JmsPoolConnectionStatistics> statsConsumer) {
+        pools.values().forEach(pool -> {
+            pool.connections.forEach(conn -> {
+                try {
+                    statsConsumer.accept(conn.getStatistics());
+                } catch (Exception e) {
+                    LOG.trace("Suppressed error from user connection statistics handler");
+                }
+            });
+        });
+    }
+
+    @Override
+    public synchronized void foreachActive(Consumer<JmsPoolConnectionStatistics> statsConsumer) {
+        pools.values().forEach(pool -> {
+            pool.connections.forEach(conn -> {
+                if (!conn.isIdle()) {
+                    try {
+                        statsConsumer.accept(conn.getStatistics());
+                    } catch (Exception e) {
+                        LOG.trace("Suppressed error from user connection statistics handler");
+                    }
+                }
+            });
+        });
+    }
+
+    @Override
+    public synchronized void foreachIdle(Consumer<JmsPoolConnectionStatistics> statsConsumer) {
+        pools.values().forEach(pool -> {
+            pool.connections.forEach(conn -> {
+                if (conn.isIdle()) {
+                    try {
+                        statsConsumer.accept(conn.getStatistics());
+                    } catch (Exception e) {
+                        LOG.trace("Suppressed error from user connection statistics handler");
+                    }
+                }
+            });
+        });
     }
 
     /**
@@ -176,7 +264,7 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
         }
 
         return pools.computeIfAbsent(
-            new JmsConnectionKey(username, password), key -> new JmsPoolKeyedConnectionPool(key)).nextAvailable();
+            new JmsConnectionKey(username, password), key -> new JmsKeyedConnectionPool(key)).nextAvailable();
     }
 
     /**
@@ -261,20 +349,20 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
         }
     }
 
-    private class JmsPoolKeyedConnectionPool implements JmsConnectionProxyManager<CP> {
+    private class JmsKeyedConnectionPool implements JmsConnectionProxyManager<CP> {
 
         private final Deque<CP> connections = new ArrayDeque<>();
 
         private final JmsConnectionKey connectionKey;
 
-        JmsPoolKeyedConnectionPool(JmsConnectionKey connectionKey) {
+        JmsKeyedConnectionPool(JmsConnectionKey connectionKey) {
             this.connectionKey = connectionKey;
         }
 
         public void clear() {
             connections.forEach(conn -> {
                 try {
-                    conn.closeConnection();
+                    conn.internalClose();
                 } catch (Exception ex) {
                     LOG.trace("Suppressed an error while closing connection during clear", ex);
                 }
@@ -315,8 +403,8 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
 
             do {
                 if (connections.size() < maxConnections) {
-                    connection = createConnectionProxy(connectionKey.getUserName(),
-                                                       connectionKey.getPassword(),
+                    connection = createConnectionProxy(connectionKey.username(),
+                                                       connectionKey.password(),
                                                        this);
 
                     connections.offer(connection);
@@ -332,7 +420,7 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
                         connections.offer(connection);
                     } else {
                         try {
-                            connection.closeConnection();
+                            connection.internalClose();
                         } catch (Exception e) {
                             LOG.trace("Suppressed an error while cleaning up a unusable connection during checkout", e);
                         } finally {
@@ -348,21 +436,34 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
         }
 
         protected void scheduledConnectionsCheck() {
+            // Start out empty and only grow when an actual failed or idle for to long
+            // connection is found. We close out of band to release the lock and let new
+            // connections enter the pool from create calls.
+            final List<CP> connectionsToClose = new ArrayList<>(0);
+
             synchronized (JmsAbstractConnectionPool.this) {
+                if (connections.isEmpty()) {
+                    return;
+                }
+
                 connections.removeIf(connection -> {
                     final boolean remove = !connection.checkIsUsable();
 
                     if (remove) {
-                        try {
-                            connection.closeConnection();
-                        } catch (Exception e) {
-                            LOG.trace("Suppressed an error while cleaning up a unusable connection during timed checks", e);
-                        }
+                        connectionsToClose.add(connection);
                     }
 
                     return remove;
                 });
             }
+
+            connectionsToClose.forEach(connection -> {
+                try {
+                    connection.internalClose();
+                } catch (Exception e) {
+                    LOG.trace("Suppressed an error while cleaning up a unusable connection during timed checks", e);
+                }
+            });
         }
 
         /*
@@ -373,6 +474,8 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
 
         @Override
         public CP tryAcquireReference(CP connection) throws JMSException {
+            boolean closeConnection = false;
+
             synchronized (JmsAbstractConnectionPool.this) {
                 // If for some reason a caller trying to add registrations to a connection
                 // encounters a connection that has already failed we just need to ensure we
@@ -380,16 +483,19 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
                 if (connection.checkIsUsable()) {
                     connection.acquireReference();
                 } else {
+                    closeConnection = true;
                     connections.remove(connection);
-
-                    try {
-                        connection.closeConnection();
-                    } catch (Exception e) {
-                        LOG.trace("Suppressed an error while cleaning up a unusable connection from additional acquire", e);
-                    }
-
-                    throw new IllegalStateException("Connection is not in a usable state");
                 }
+            }
+
+            if (closeConnection) {
+                try {
+                    connection.internalClose();
+                } catch (Exception e) {
+                    LOG.trace("Suppressed an error while cleaning up a unusable connection during acquire", e);
+                }
+
+                throw new IllegalStateException("Connection is not in a usable state");
             }
 
             return connection;
@@ -397,6 +503,8 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
 
         @Override
         public CP tryReleaseReference(CP connection) {
+            boolean closeConnection = false;
+
             synchronized (JmsAbstractConnectionPool.this) {
                 connection.releaseReference();
 
@@ -406,13 +514,16 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
                 // will have seen any exception sent via the pooled connection exception
                 // listener notifications.
                 if (!connection.checkIsUsable()) {
-                    try {
-                        connection.closeConnection();
-                    } catch (Exception e) {
-                        LOG.trace("Suppressed an error while cleaning up a unusable connection during release", e);
-                    } finally {
-                        connections.remove(connection);
-                    }
+                    closeConnection = true;
+                    connections.remove(connection);
+                }
+            }
+
+            if (closeConnection) {
+                try {
+                    connection.internalClose();
+                } catch (Exception e) {
+                    LOG.trace("Suppressed an error while cleaning up a unusable connection during release", e);
                 }
             }
 
@@ -423,12 +534,12 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
         public CP invalidateConnection(CP connection) {
             synchronized (JmsAbstractConnectionPool.this) {
                 connections.remove(connection);
+            }
 
-                try {
-                    connection.closeConnection();
-                } catch (Exception e) {
-                    LOG.trace("Suppressed an error while cleaning up a closed connection at close", e);
-                }
+            try {
+                connection.internalClose();
+            } catch (Exception e) {
+                LOG.trace("Suppressed an error while cleaning up a closed connection at close", e);
             }
 
             return connection;

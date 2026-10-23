@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.messaginghub.pooled.jms.JmsPoolConnectionStatistics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,11 +36,13 @@ import jakarta.jms.ResourceAllocationException;
  *
  * @param <SP> The type of the session proxy that is pooled in this instance
  */
-public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<SP>> {
+public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<SP>> implements JmsPoolConnectionStatistics {
+
+    private record JmsSessionKey(boolean transacted, int acknowledgementMode) {}
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final Map<JmsSessionKey, JmsPoolKeyedSessionsPool> pools = new HashMap<>();
+    private final Map<JmsSessionKey, JmsKeyedSessionPool> pools = new HashMap<>();
     private final JmsConnectionProxyConfiguration configuration;
 
     private boolean destroyed;
@@ -82,9 +85,7 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
         return configuration.getBlockIfSessionPoolIsFullTimeout();
     }
 
-    /**
-     * {@return the total number of sessions that are currently idle and active in this session pool}
-     */
+    @Override
     public synchronized int getSessionCount() {
         final AtomicInteger count = new AtomicInteger();
 
@@ -93,9 +94,16 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
         return count.get();
     }
 
-    /**
-     * {@return the number of sessions that are currently idle in this session pool}
-     */
+    @Override
+    public synchronized int getActiveSessionCount() {
+        final AtomicInteger count = new AtomicInteger();
+
+        pools.values().forEach(pool -> count.addAndGet(pool.getNumActive()));
+
+        return count.get();
+    }
+
+    @Override
     public synchronized int getIdleSessionCount() {
         final AtomicInteger count = new AtomicInteger();
 
@@ -104,15 +112,40 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
         return count.get();
     }
 
-    /**
-     * {@return the number of sessions that are currently loaned out from this session pool}
-     */
-    public synchronized int getActiveSessionCount() {
-        final AtomicInteger count = new AtomicInteger();
+    @Override
+    public synchronized int getSessionCount(boolean transacted, int acknowledgementMode) {
+        final JmsSessionKey key = new JmsSessionKey(transacted, acknowledgementMode);
+        final JmsKeyedSessionPool pool = pools.get(key);
 
-        pools.values().forEach(pool -> count.addAndGet(pool.getNumActive()));
+        if (pool != null) {
+            return pool.getNumSessions();
+        } else {
+            return 0;
+        }
+    }
 
-        return count.get();
+    @Override
+    public synchronized int getActiveSessionCount(boolean transacted, int acknowledgementMode) {
+        final JmsSessionKey key = new JmsSessionKey(transacted, acknowledgementMode);
+        final JmsKeyedSessionPool pool = pools.get(key);
+
+        if (pool != null) {
+            return pool.getNumActive();
+        } else {
+            return 0;
+        }
+    }
+
+    @Override
+    public synchronized int getIdleSessionCount(boolean transacted, int acknowledgementMode) {
+        final JmsSessionKey key = new JmsSessionKey(transacted, acknowledgementMode);
+        final JmsKeyedSessionPool pool = pools.get(key);
+
+        if (pool != null) {
+            return pool.getNumIdle();
+        } else {
+            return 0;
+        }
     }
 
     /**
@@ -133,7 +166,7 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
      * @throws JMSException if a new session cannot be created to match the demand
      */
     public synchronized SP nextSession(boolean transacted, int sessionMode) throws JMSException {
-        return pools.computeIfAbsent(new JmsSessionKey(transacted, sessionMode), key -> new JmsPoolKeyedSessionsPool(key)).nextIdle();
+        return pools.computeIfAbsent(new JmsSessionKey(transacted, sessionMode), key -> new JmsKeyedSessionPool(key)).nextIdle();
     }
 
     /**
@@ -183,14 +216,14 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
     }
 
     // Expected to operate under the lock of the parent session pool
-    private class JmsPoolKeyedSessionsPool implements JmsSessionProxyManager<SP> {
+    private class JmsKeyedSessionPool implements JmsSessionProxyManager<SP> {
 
         private final JmsSessionKey sessionKey;
 
         private final Queue<SP> activeSessions;
         private final Queue<SP> idleSessions;
 
-        JmsPoolKeyedSessionsPool(JmsSessionKey sessionKey) {
+        JmsKeyedSessionPool(JmsSessionKey sessionKey) {
             this.sessionKey = sessionKey;
             this.activeSessions = new ArrayDeque<SP>(getMaxSessions());
             this.idleSessions = new ArrayDeque<SP>(getMaxIdleSessions());
@@ -267,7 +300,7 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
                 final SP session;
 
                 if (idleSessions.isEmpty()) {
-                    session = createSessionProxy(sessionKey.isTransacted(), sessionKey.getAcknowledgementMode(), this);
+                    session = createSessionProxy(sessionKey.transacted(), sessionKey.acknowledgementMode(), this);
                 } else {
                     session = idleSessions.poll();
                 }
@@ -293,6 +326,8 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
 
         @Override
         public SP releaseSession(SP session) {
+            boolean closeSession = false;
+
             synchronized (JmsAbstractSessionPool.this) {
                 // Check the returned session to try and detect closed while being
                 // returned and also check that the idle sessions queue isn't full.
@@ -301,13 +336,21 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
                 activeSessions.remove(session);
 
                 if (destroyed || !session.validateSession() || idleSessions.size() == getMaxIdleSessions()) {
-                    session.internalClose();
+                    closeSession = true;
                 } else {
                     idleSessions.offer(session);
                 }
 
                 // Signal waiters to check if a session can be taken now.
                 JmsAbstractSessionPool.this.notifyAll();
+            }
+
+            if (closeSession) {
+                try {
+                    session.internalClose();
+                } catch (Exception e) {
+                    LOG.trace("Ingoered error on close of pooled session", e);
+                }
             }
 
             return session;
@@ -319,14 +362,14 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
                 activeSessions.remove(session);
                 idleSessions.remove(session);
 
-                try {
-                    session.internalClose();
-                } catch (Exception e) {
-                    LOG.trace("Ingoered error on close of pooled session", e);
-                }
-
                 // Signal waiters to check if a session can be taken now.
                 JmsAbstractSessionPool.this.notifyAll();
+            }
+
+            try {
+                session.internalClose();
+            } catch (Exception e) {
+                LOG.trace("Ingoered error on close of pooled session", e);
             }
 
             return session;

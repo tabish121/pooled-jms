@@ -16,6 +16,8 @@
  */
 package org.messaginghub.pooled.jms;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -26,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.messaginghub.pooled.jms.mock.MockJMSConnection;
+import org.messaginghub.pooled.jms.util.Wait;
 
 import jakarta.jms.Connection;
 import jakarta.jms.IllegalStateException;
@@ -38,6 +41,8 @@ public class JmsPoolConnectionIdleEvictionsFromPoolTest extends JmsPoolTestSuppo
     public void testEvictionOfIdle() throws Exception {
         cf.setConnectionIdleTimeout(10);
         cf.setConnectionCheckInterval(10);
+
+        assertEquals(10, cf.getConnectionIdleTimeout());
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
         Connection amq1 = connection.getProviderConnection();
@@ -56,6 +61,8 @@ public class JmsPoolConnectionIdleEvictionsFromPoolTest extends JmsPoolTestSuppo
     public void testEvictionOfSeeminglyClosedConnection() throws Exception {
         cf.setConnectionIdleTimeout((int) TimeUnit.MINUTES.toMillis(10));
         cf.setConnectionCheckInterval(-1); // Validation check should capture and evict this
+
+        assertEquals((int) TimeUnit.MINUTES.toMillis(10), cf.getConnectionIdleTimeout());
 
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
         MockJMSConnection mockConnection1 = (MockJMSConnection) connection.getProviderConnection();
@@ -154,5 +161,69 @@ public class JmsPoolConnectionIdleEvictionsFromPoolTest extends JmsPoolTestSuppo
         // old one should have been inactive and idled out.
         final JmsPoolConnection another = (JmsPoolConnection) cf.createConnection();
         assertNotSame(underlying, another.getProviderConnection());
+    }
+
+    @Test
+    public void testDisabledCheckIntervalStillEvaulatesIldeStateOnNewConnectionCall() throws Exception {
+        cf.setConnectionIdleTimeout(10);
+        cf.setConnectionCheckInterval(10);
+        cf.setMaxConnections(1);
+
+        final JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        final Connection original = connection.getProviderConnection();
+
+        connection.close(); // Return to pool
+
+        // Disable the check interval
+        cf.setConnectionCheckInterval(-10);
+        assertEquals(-1, cf.getConnectionCheckInterval());
+
+        // let connection to get idle
+        TimeUnit.MILLISECONDS.sleep(20);
+
+        // On create we should be checking if the connection sat idle for too long and replace
+        // it with a fresh connection if so, even if the check interval is disabled.
+        final JmsPoolConnection connection2 = (JmsPoolConnection) cf.createConnection();
+        final Connection updated = connection2.getProviderConnection();
+
+        assertNotSame(original, updated);
+
+        connection2.close(); // Return to pool
+
+        cf.setConnectionCheckInterval(10); // Re-enable periodic checks
+        assertNotEquals(-1, cf.getConnectionCheckInterval());
+
+        // let connection to get idle
+        TimeUnit.MILLISECONDS.sleep(40);
+
+        // get a connection from pool again, it should be a new Connection instance as the
+        // old one should have been inactive and idled out.
+        JmsPoolConnection connection3 = (JmsPoolConnection) cf.createConnection();
+        final Connection updated2 = connection3.getProviderConnection();
+
+        assertNotSame(original, updated2);
+        assertNotSame(updated, updated2);
+    }
+
+    @Test
+    public void testWaitForConnectionToIdleOut() throws Exception {
+        cf.setConnectionIdleTimeout(10);
+        cf.setConnectionCheckInterval(10);
+        cf.setMaxConnections(1);
+
+        final JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        final Connection original = connection.getProviderConnection();
+
+        connection.close(); // Return to pool
+
+        assertEquals(1, cf.getNumIdleConnections());
+
+        // Idle background check should engage and remove the idle connection
+        Wait.waitFor(() -> cf.getNumIdleConnections() == 0);
+
+        final JmsPoolConnection connection2 = (JmsPoolConnection) cf.createConnection();
+        final Connection updated = connection2.getProviderConnection();
+
+        assertNotSame(original, updated);
     }
 }

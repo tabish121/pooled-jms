@@ -16,6 +16,7 @@
  */
 package org.messaginghub.pooled.jms;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -128,6 +129,8 @@ public class JmsPoolSessionExhaustionTest extends JmsPoolTestSupport {
         if (timeout) {
             cf.setBlockIfSessionPoolIsFull(true);
             cf.setBlockIfSessionPoolIsFullTimeout(50);
+
+            assertEquals(50, cf.getBlockIfSessionPoolIsFullTimeout());
         } else {
             cf.setBlockIfSessionPoolIsFull(false);
         }

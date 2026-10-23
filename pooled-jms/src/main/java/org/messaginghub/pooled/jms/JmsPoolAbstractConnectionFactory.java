@@ -189,7 +189,33 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
      * @return the number of Connections currently in the Pool if started, otherwise returns zero.
      */
     public int getNumConnections() {
-        return getConnectionFactoryProxy().getNumConnections();
+        return getConnectionFactoryProxy().getStatistics().getConnectionCount();
+    }
+
+    /**
+     * Gets the number of active connections currently in the pool at the time of this call, an
+     * active connection is one that is loaned to at least one user.
+     *
+     * @return the number of active Connections currently in the Pool if started, otherwise returns zero.
+     */
+    public int getNumActiveConnections() {
+        return getConnectionFactoryProxy().getStatistics().getActiveConnectionCount();
+    }
+
+    /**
+     * Gets the number of idle connections currently in the pool at the time of this call.
+     *
+     * @return the number of idle Connections currently in the Pool if started, otherwise returns zero.
+     */
+    public int getNumIdleConnections() {
+        return getConnectionFactoryProxy().getStatistics().getIdleConnectionCount();
+    }
+
+    /**
+     * {@return an instance of the pooled connection statistics API}
+     */
+    public JmsPoolConnectionFactoryStatistics getStatistics() {
+        return getConnectionFactoryProxy().getStatistics();
     }
 
     //----- Pooled Connection Configuration ----------------------------------//

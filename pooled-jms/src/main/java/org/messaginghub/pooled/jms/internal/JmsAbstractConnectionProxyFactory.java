@@ -18,6 +18,8 @@ package org.messaginghub.pooled.jms.internal;
 
 import java.beans.ExceptionListener;
 
+import org.messaginghub.pooled.jms.JmsPoolConnectionFactoryStatistics;
+
 import jakarta.jms.Connection;
 import jakarta.jms.ConnectionFactory;
 import jakarta.jms.IllegalStateException;
@@ -44,6 +46,13 @@ public abstract class JmsAbstractConnectionProxyFactory<CF, CP extends JmsAbstra
      */
     public JmsAbstractConnectionProxyFactory() {
         this.connectionPool = createConnectionPool();
+    }
+
+    /**
+     * {@return an instance of the statistics API for this pooling connection proxy factory}
+     */
+    public JmsPoolConnectionFactoryStatistics getStatistics() {
+        return connectionPool;
     }
 
     /**
@@ -138,15 +147,6 @@ public abstract class JmsAbstractConnectionProxyFactory<CF, CP extends JmsAbstra
      */
     public void clear() {
         connectionPool.clear();
-    }
-
-    /**
-     * Gets the number of connections currently in the pool at the time of this call.
-     *
-     * @return the number of Connections currently in the Pool if started, otherwise returns zero.
-     */
-    public int getNumConnections() {
-        return connectionPool.getConnectionCount();
     }
 
     //----- Pooled Connection Configuration ----------------------------------//
