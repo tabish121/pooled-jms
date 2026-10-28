@@ -29,22 +29,17 @@ import jakarta.jms.TopicSubscriber;
  */
 public class JmsPoolTopicSubscriber extends JmsPoolMessageConsumer implements TopicSubscriber, AutoCloseable {
 
-    JmsPoolTopicSubscriber(JmsMessageConsumerProxy delegate, Consumer<JmsPoolMessageConsumer> onClose) {
-        super(delegate, onClose);
+    JmsPoolTopicSubscriber(JmsMessageConsumerProxy delegate, Topic destination, Consumer<JmsPoolMessageConsumer> onClose) {
+        super(delegate, destination, onClose);
     }
 
     @Override
     public Topic getTopic() throws JMSException {
-        return getDelegate().getTopic();
+        return getProxy().getTopic();
     }
 
     @Override
     public boolean getNoLocal() throws JMSException {
-        return getDelegate().getNoLocal();
-    }
-
-    @Override
-    public String toString() {
-        return getClass().getSimpleName() + " { " + getDelegate() + " }";
+        return getProxy().getNoLocal();
     }
 }

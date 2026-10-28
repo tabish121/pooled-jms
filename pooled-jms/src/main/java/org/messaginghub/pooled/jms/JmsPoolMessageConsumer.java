@@ -21,6 +21,7 @@ import java.util.function.Consumer;
 
 import org.messaginghub.pooled.jms.internal.JmsMessageConsumerProxy;
 
+import jakarta.jms.Destination;
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
 import jakarta.jms.Message;
@@ -37,6 +38,7 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
 
     private final Consumer<JmsPoolMessageConsumer> onClose;
     private final JmsMessageConsumerProxy messageConsumer;
+    private final Destination destination;
 
     private volatile int closed;
 
@@ -46,8 +48,9 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
      * @param messageConsumer
      * 		the created consumer to wrap
      */
-    JmsPoolMessageConsumer(JmsMessageConsumerProxy messageConsumer, Consumer<JmsPoolMessageConsumer> onClose) {
+    JmsPoolMessageConsumer(JmsMessageConsumerProxy messageConsumer, Destination destination, Consumer<JmsPoolMessageConsumer> onClose) {
         this.messageConsumer = messageConsumer;
+        this.destination = destination;
         this.onClose = onClose;
     }
 
@@ -100,7 +103,7 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
 
     @Override
     public String toString() {
-        return getClass().getSimpleName() + " { " + messageConsumer + " }";
+        return getClass().getSimpleName() + " { destination=" + destination + " }";
     }
 
     /**
@@ -119,6 +122,19 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
     //----- Internal support methods -----------------------------------------//
 
     /**
+     * Returns the wrapped {@link JmsMessageConsumerProxy} that carries the provider consumer
+     * reference and any other state data associated with the proxy.
+     *
+     * @return the proxy message producer that handles the state of the pooled JMS MessageConsumer
+     *
+     * @throws JMSException if this message consumer instance was already closed.
+     */
+    protected JmsMessageConsumerProxy getProxy() throws JMSException {
+        checkClosed();
+        return messageConsumer;
+    }
+
+    /**
      * Checks if the wrapper has been closed previously.
      *
      * @throws JMSException if the wrapper was closed.
@@ -127,14 +143,5 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
         if (closed != 0) {
             throw new IllegalStateException("The MessageConsumer is closed");
         }
-    }
-
-    /**
-     * Returns the message consumer proxy object for subclass to access
-     *
-     * @return the message consumer proxy backing this wrapper.
-     */
-    protected JmsMessageConsumerProxy getDelegate() {
-        return messageConsumer;
     }
 }

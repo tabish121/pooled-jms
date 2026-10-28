@@ -35,11 +35,6 @@ public class JmsPoolTopicPublisher extends JmsPoolMessageProducer implements Top
     }
 
     @Override
-    public Topic getTopic() throws JMSException {
-        return (Topic) getDestination();
-    }
-
-    @Override
     public void publish(Message message) throws JMSException {
         super.send(message);
     }
@@ -60,7 +55,7 @@ public class JmsPoolTopicPublisher extends JmsPoolMessageProducer implements Top
     }
 
     @Override
-    public String toString() {
-        return getClass().getSimpleName() + " { " + getDelegate() + " }";
+    public Topic getTopic() throws JMSException {
+        return (Topic) getDestination();
     }
 }

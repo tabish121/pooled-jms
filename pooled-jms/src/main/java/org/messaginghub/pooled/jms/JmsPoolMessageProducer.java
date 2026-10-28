@@ -324,7 +324,7 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
 
     @Override
     public String toString() {
-        return getClass().getSimpleName() + " { " + messageProducer + " }";
+        return getClass().getSimpleName() + " { destination=" + destination + " }";
     }
 
     /**
@@ -340,13 +340,6 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
     }
 
     //----- Internal Implementation ------------------------------------------//
-
-    /**
-     * {@return the wrapped producer proxy without checking the closed state}
-     */
-    protected MessageProducer getDelegate() {
-        return messageProducer;
-    }
 
     private void doClose(boolean force) throws JMSException {
         if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {

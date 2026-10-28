@@ -36,13 +36,15 @@ public class JmsPoolQueueBrowser implements QueueBrowser, AutoCloseable {
         AtomicIntegerFieldUpdater.newUpdater(JmsPoolQueueBrowser.class, "closed");
 
     private final JmsQueueBrowserProxy queueBrowser;
+    private final Queue destination;
     private final Consumer<JmsPoolQueueBrowser> onClose;
 
     private volatile int closed;
 
-    JmsPoolQueueBrowser(JmsQueueBrowserProxy delegate, Consumer<JmsPoolQueueBrowser> onClose) {
+    JmsPoolQueueBrowser(JmsQueueBrowserProxy delegate, Queue destination, Consumer<JmsPoolQueueBrowser> onClose) {
         this.queueBrowser = delegate;
         this.onClose = onClose;
+        this.destination = destination;
     }
 
     @Override
@@ -76,7 +78,7 @@ public class JmsPoolQueueBrowser implements QueueBrowser, AutoCloseable {
 
     @Override
     public String toString() {
-        return getClass().getSimpleName() + " { " + queueBrowser + " }";
+        return getClass().getSimpleName() + " { destination=" + destination + " }";
     }
 
     /**

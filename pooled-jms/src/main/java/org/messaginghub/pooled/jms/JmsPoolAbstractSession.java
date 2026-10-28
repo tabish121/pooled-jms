@@ -301,89 +301,89 @@ public abstract class JmsPoolAbstractSession implements Session, TopicSession, Q
 
     @Override
     public QueueBrowser createBrowser(Queue queue) throws JMSException {
-        return addCloseable(new JmsPoolQueueBrowser(safeGetSessionProxy().createBrowser(queue), this::onQueueBrowserClose));
+        return addCloseable(new JmsPoolQueueBrowser(safeGetSessionProxy().createBrowser(queue), queue, this::onQueueBrowserClose));
     }
 
     @Override
     public QueueBrowser createBrowser(Queue queue, String selector) throws JMSException {
-        return addCloseable(new JmsPoolQueueBrowser(safeGetSessionProxy().createBrowser(queue, selector), this::onQueueBrowserClose));
+        return addCloseable(new JmsPoolQueueBrowser(safeGetSessionProxy().createBrowser(queue, selector), queue, this::onQueueBrowserClose));
     }
 
     @Override
     public MessageConsumer createConsumer(Destination destination) throws JMSException {
-        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createConsumer(destination), this::onConsumerClose));
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createConsumer(destination), destination, this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createConsumer(Destination destination, String selector) throws JMSException {
-        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createConsumer(destination, selector), this::onConsumerClose));
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createConsumer(destination, selector), destination, this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createConsumer(Destination destination, String selector, boolean noLocal) throws JMSException {
-        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createConsumer(destination, selector, noLocal), this::onConsumerClose));
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createConsumer(destination, selector, noLocal), destination, this::onConsumerClose));
     }
 
     @Override
     public TopicSubscriber createDurableSubscriber(Topic topic, String selector) throws JMSException {
-        return addCloseable(new JmsPoolTopicSubscriber(safeGetSessionProxy().createDurableSubscriber(topic, selector), this::onConsumerClose));
+        return addCloseable(new JmsPoolTopicSubscriber(safeGetSessionProxy().createDurableSubscriber(topic, selector), topic, this::onConsumerClose));
     }
 
     @Override
     public TopicSubscriber createDurableSubscriber(Topic topic, String name, String selector, boolean noLocal) throws JMSException {
-        return addCloseable(new JmsPoolTopicSubscriber(safeGetSessionProxy().createDurableSubscriber(topic, name, selector, noLocal), this::onConsumerClose));
+        return addCloseable(new JmsPoolTopicSubscriber(safeGetSessionProxy().createDurableSubscriber(topic, name, selector, noLocal), topic, this::onConsumerClose));
     }
 
     @Override
     public TopicSubscriber createSubscriber(Topic topic) throws JMSException {
-        return addCloseable(new JmsPoolTopicSubscriber(safeGetSessionProxy().createSubscriber(topic), this::onConsumerClose));
+        return addCloseable(new JmsPoolTopicSubscriber(safeGetSessionProxy().createSubscriber(topic), topic, this::onConsumerClose));
     }
 
     @Override
     public TopicSubscriber createSubscriber(Topic topic, String selector, boolean local) throws JMSException {
-        return addCloseable(new JmsPoolTopicSubscriber(safeGetSessionProxy().createSubscriber(topic, selector, local), this::onConsumerClose));
+        return addCloseable(new JmsPoolTopicSubscriber(safeGetSessionProxy().createSubscriber(topic, selector, local), topic, this::onConsumerClose));
     }
 
     @Override
     public QueueReceiver createReceiver(Queue queue) throws JMSException {
-        return addCloseable(new JmsPoolQueueReceiver(safeGetSessionProxy().createReceiver(queue), this::onConsumerClose));
+        return addCloseable(new JmsPoolQueueReceiver(safeGetSessionProxy().createReceiver(queue), queue, this::onConsumerClose));
     }
 
     @Override
     public QueueReceiver createReceiver(Queue queue, String selector) throws JMSException {
-        return addCloseable(new JmsPoolQueueReceiver(safeGetSessionProxy().createReceiver(queue, selector), this::onConsumerClose));
+        return addCloseable(new JmsPoolQueueReceiver(safeGetSessionProxy().createReceiver(queue, selector), queue, this::onConsumerClose));
     }
 
     //----- JMS 2.0 Subscriber creation API ----------------------------------//
 
     @Override
     public MessageConsumer createSharedConsumer(Topic topic, String sharedSubscriptionName) throws JMSException {
-        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createSharedConsumer(topic, sharedSubscriptionName), this::onConsumerClose));
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createSharedConsumer(topic, sharedSubscriptionName), topic, this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createSharedConsumer(Topic topic, String sharedSubscriptionName, String messageSelector) throws JMSException {
-        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createSharedConsumer(topic, sharedSubscriptionName, messageSelector), this::onConsumerClose));
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createSharedConsumer(topic, sharedSubscriptionName, messageSelector), topic, this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createDurableConsumer(Topic topic, String name) throws JMSException {
-        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createDurableConsumer(topic, name), this::onConsumerClose));
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createDurableConsumer(topic, name), topic, this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createDurableConsumer(Topic topic, String name, String messageSelector, boolean noLocal) throws JMSException {
-        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createDurableConsumer(topic, name, messageSelector, noLocal), this::onConsumerClose));
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createDurableConsumer(topic, name, messageSelector, noLocal), topic, this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createSharedDurableConsumer(Topic topic, String name) throws JMSException {
-        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createSharedDurableConsumer(topic, name), this::onConsumerClose));
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createSharedDurableConsumer(topic, name), topic, this::onConsumerClose));
     }
 
     @Override
     public MessageConsumer createSharedDurableConsumer(Topic topic, String name, String messageSelector) throws JMSException {
-        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createSharedDurableConsumer(topic, name, messageSelector), this::onConsumerClose));
+        return addCloseable(new JmsPoolMessageConsumer(safeGetSessionProxy().createSharedDurableConsumer(topic, name, messageSelector), topic, this::onConsumerClose));
     }
 
     //----- Producer related methods -----------------------------------------//

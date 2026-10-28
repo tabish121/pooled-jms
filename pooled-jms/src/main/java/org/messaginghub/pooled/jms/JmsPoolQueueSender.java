@@ -48,9 +48,4 @@ public class JmsPoolQueueSender extends JmsPoolMessageProducer implements QueueS
     public Queue getQueue() throws JMSException {
         return (Queue) getDestination();
     }
-
-    @Override
-    public String toString() {
-        return getClass().getSimpleName() + " { " + getDelegate() + " }";
-    }
 }

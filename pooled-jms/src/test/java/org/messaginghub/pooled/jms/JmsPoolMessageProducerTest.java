@@ -37,7 +37,12 @@ import jakarta.jms.JMSException;
 import jakarta.jms.Message;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.Queue;
+import jakarta.jms.QueueSender;
+import jakarta.jms.QueueSession;
 import jakarta.jms.Session;
+import jakarta.jms.Topic;
+import jakarta.jms.TopicPublisher;
+import jakarta.jms.TopicSession;
 
 /**
  * Tests for the JMS Pool MessageProducer wrapper class.
@@ -55,6 +60,39 @@ public class JmsPoolMessageProducerTest extends JmsPoolTestSupport {
         MessageProducer producer = session.createProducer(queue);
 
         assertNotNull(producer.toString());
+        assertTrue(producer.toString().startsWith("JmsPoolMessageProducer"));
+    }
+
+    @Test
+    public void testToStringAnonymousProducer() throws JMSException {
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
+        Session session = connection.createSession();
+        MessageProducer producer = session.createProducer(null);
+
+        assertNotNull(producer.toString());
+        assertTrue(producer.toString().startsWith("JmsPoolMessageProducer"));
+    }
+
+    @Test
+    public void testToStringQueueSender() throws JMSException {
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
+        QueueSession session = connection.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
+        Queue queue = session.createTemporaryQueue();
+        QueueSender sender = session.createSender(queue);
+
+        assertNotNull(sender.toString());
+        assertTrue(sender.toString().startsWith("JmsPoolQueueSender"));
+    }
+
+    @Test
+    public void testToStringTopicPublisher() throws JMSException {
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
+        TopicSession session = connection.createTopicSession(false, Session.AUTO_ACKNOWLEDGE);
+        Topic topic = session.createTemporaryTopic();
+        TopicPublisher publisher = session.createPublisher(topic);
+
+        assertNotNull(publisher.toString());
+        assertTrue(publisher.toString().startsWith("JmsPoolTopicPublisher"));
     }
 
     @Test

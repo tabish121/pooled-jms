@@ -48,6 +48,7 @@ import jakarta.jms.JMSException;
 import jakarta.jms.JMSRuntimeException;
 import jakarta.jms.Message;
 import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
 import jakarta.jms.Queue;
 import jakarta.jms.QueueSession;
 import jakarta.jms.Session;
@@ -615,6 +616,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         Queue queue1 = session.createTemporaryQueue();
 
         JmsPoolMessageProducer producer1 = (JmsPoolMessageProducer) session.createProducer(queue1);
+        MessageProducer providerProducer1 = producer1.getProviderMessageProducer();
 
         session.close();
         session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
@@ -623,7 +625,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         // the first session as they underlying session will be the same.
         JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(queue1);
 
-        assertSame(producer1.getDelegate(), producer2.getDelegate());
+        assertSame(providerProducer1, producer2.getProviderMessageProducer());
 
         connection.close();
     }
@@ -957,10 +959,12 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         JmsPoolMessageProducer producer1 = (JmsPoolMessageProducer) session.createProducer(queue);
         JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(queue);
 
-        assertSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
+        MessageProducer providerProducer1 = producer1.getProviderMessageProducer();
+
+        assertSame(providerProducer1, producer2.getProviderMessageProducer());
 
         // Simulate the remote side closing the producer (e.g. on failover)
-        producer1.getProviderMessageProducer().close();
+        providerProducer1.close();
 
         producer2.close();
         producer1.close();
@@ -968,7 +972,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         // The closed anonymous producer must have been evicted so a new one is created
         JmsPoolMessageProducer producer3 = (JmsPoolMessageProducer) session.createProducer(queue);
 
-        assertNotSame(producer1.getDelegate(), producer3.getDelegate());
+        assertNotSame(providerProducer1, producer3.getProviderMessageProducer());
 
         producer3.send(session.createMessage());
 
@@ -984,16 +988,18 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         JmsPoolTopicPublisher publisher1 = (JmsPoolTopicPublisher) session.createPublisher(topic);
         JmsPoolTopicPublisher publisher2 = (JmsPoolTopicPublisher) session.createPublisher(topic);
 
-        assertSame(publisher1.getProviderMessageProducer(), publisher2.getProviderMessageProducer());
+        MessageProducer providerProducer1 = publisher1.getProviderMessageProducer();
 
-        publisher1.getProviderMessageProducer().close();
+        assertSame(providerProducer1, publisher2.getProviderMessageProducer());
+
+        providerProducer1.close();
 
         publisher2.close();
         publisher1.close();
 
         JmsPoolTopicPublisher publisher3 = (JmsPoolTopicPublisher) session.createPublisher(topic);
 
-        assertNotSame(publisher1.getDelegate(), publisher3.getDelegate());
+        assertNotSame(providerProducer1, publisher3.getProviderMessageProducer());
 
         publisher3.publish(session.createMessage());
 
@@ -1009,16 +1015,18 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         JmsPoolQueueSender sender1 = (JmsPoolQueueSender) session.createSender(queue);
         JmsPoolQueueSender sender2 = (JmsPoolQueueSender) session.createSender(queue);
 
-        assertSame(sender1.getProviderMessageProducer(), sender2.getProviderMessageProducer());
+        MessageProducer providerProducer1 = sender1.getProviderMessageProducer();
 
-        sender1.getProviderMessageProducer().close();
+        assertSame(providerProducer1, sender2.getProviderMessageProducer());
+
+        providerProducer1.close();
 
         sender2.close();
         sender1.close();
 
         JmsPoolQueueSender sender3 = (JmsPoolQueueSender) session.createSender(queue);
 
-        assertNotSame(sender1.getDelegate(), sender3.getDelegate());
+        assertNotSame(providerProducer1, sender3.getProviderMessageProducer());
 
         sender3.send(session.createMessage());
 

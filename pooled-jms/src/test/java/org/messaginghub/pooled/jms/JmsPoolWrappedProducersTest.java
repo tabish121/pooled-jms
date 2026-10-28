@@ -536,12 +536,12 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         Queue queue1 = session.createTemporaryQueue();
 
         JmsPoolMessageProducer producer1 = (JmsPoolMessageProducer) session.createProducer(queue1);
-        MessageProducer delegate1 = producer1.getDelegate();
+        MessageProducer delegate1 = producer1.getProviderMessageProducer();
 
         // Should return a wrapper whose underlying MessageProducer matches what we got from
         // the first create call as they underlying session will be the same.
         JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(queue1);
-        MessageProducer delegate2 = producer2.getDelegate();
+        MessageProducer delegate2 = producer2.getProviderMessageProducer();
 
         assertSame(delegate1, delegate2);
 
@@ -555,7 +555,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         }
 
         JmsPoolMessageProducer producer3 = (JmsPoolMessageProducer) session.createProducer(queue1);
-        MessageProducer delegate3 = producer3.getDelegate();
+        MessageProducer delegate3 = producer3.getProviderMessageProducer();
 
         assertEquals(2, produersCreated.get());
 
@@ -603,12 +603,12 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         Topic topic1 = session.createTemporaryTopic();
 
         JmsPoolMessageProducer producer1 = (JmsPoolMessageProducer) session.createPublisher(topic1);
-        MessageProducer delegate1 = producer1.getDelegate();
+        MessageProducer delegate1 = producer1.getProviderMessageProducer();
 
         // Should return a wrapper whose underlying MessageProducer matches what we got from
         // the first create call as they underlying session will be the same.
         JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createPublisher(topic1);
-        MessageProducer delegate2 = producer2.getDelegate();
+        MessageProducer delegate2 = producer2.getProviderMessageProducer();
 
         assertSame(delegate1, delegate2);
 
@@ -622,7 +622,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         }
 
         JmsPoolMessageProducer producer3 = (JmsPoolMessageProducer) session.createPublisher(topic1);
-        MessageProducer delegate3 = producer3.getDelegate();
+        MessageProducer delegate3 = producer3.getProviderMessageProducer();
 
         assertEquals(2, produersCreated.get());
 
@@ -670,12 +670,12 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         Queue queue1 = session.createTemporaryQueue();
 
         JmsPoolMessageProducer producer1 = (JmsPoolMessageProducer) session.createSender(queue1);
-        MessageProducer delegate1 = producer1.getDelegate();
+        MessageProducer delegate1 = producer1.getProviderMessageProducer();
 
         // Should return a wrapper whose underlying MessageProducer matches what we got from
         // the first create call as they underlying session will be the same.
         JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createSender(queue1);
-        MessageProducer delegate2 = producer2.getDelegate();
+        MessageProducer delegate2 = producer2.getProviderMessageProducer();
 
         assertSame(delegate1, delegate2);
 
@@ -689,7 +689,7 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
         }
 
         JmsPoolMessageProducer producer3 = (JmsPoolMessageProducer) session.createSender(queue1);
-        MessageProducer delegate3 = producer3.getDelegate();
+        MessageProducer delegate3 = producer3.getProviderMessageProducer();
 
         assertEquals(2, produersCreated.get());
 

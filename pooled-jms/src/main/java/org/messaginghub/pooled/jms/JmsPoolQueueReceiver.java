@@ -29,17 +29,12 @@ import jakarta.jms.QueueReceiver;
  */
 public class JmsPoolQueueReceiver extends JmsPoolMessageConsumer implements QueueReceiver, AutoCloseable {
 
-    JmsPoolQueueReceiver(JmsMessageConsumerProxy delegate, Consumer<JmsPoolMessageConsumer> onClose) {
-        super(delegate, onClose);
+    JmsPoolQueueReceiver(JmsMessageConsumerProxy delegate, Queue destination, Consumer<JmsPoolMessageConsumer> onClose) {
+        super(delegate, destination, onClose);
     }
 
     @Override
     public Queue getQueue() throws JMSException {
-        return getDelegate().getQueue();
-    }
-
-    @Override
-    public String toString() {
-        return getClass().getSimpleName() + " { " + getDelegate() + " }";
+        return getProxy().getQueue();
     }
 }
