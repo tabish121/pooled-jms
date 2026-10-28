@@ -28,7 +28,7 @@ class JmsConnectionProxyConfiguration {
     public static final boolean DEFAULT_BLOCK_IF_SESSION_FULL = true;
     public static final long DEFAULT_BLOCK_IF_SESSION_FULL_TIMEOUT = -1L;
     public static final boolean DEFAULT_USE_ANONYMOUS_PRODUCERS = true;
-    public static final int DEFUALT_EXPLICIT_PRODUCER_CACHE_SIZE = 0;
+    public static final int DEFAULT_EXPLICIT_PRODUCER_CACHE_SIZE = 0;
     public static final boolean DEFAULT_USE_PROVIDER_JMS_CONTEXT = false;
     public static final boolean DEFAULT_FAULT_TOLERANT_CONNECTIONS = false;
 
@@ -39,7 +39,7 @@ class JmsConnectionProxyConfiguration {
     private boolean blockIfSessionPoolIsFull = DEFAULT_BLOCK_IF_SESSION_FULL;
     private long blockIfSessionPoolIsFullTimeout = DEFAULT_BLOCK_IF_SESSION_FULL_TIMEOUT;
     private boolean useAnonymousProducers = DEFAULT_USE_ANONYMOUS_PRODUCERS;
-    private int explicitProducerCacheSize = DEFUALT_EXPLICIT_PRODUCER_CACHE_SIZE;
+    private int explicitProducerCacheSize = DEFAULT_EXPLICIT_PRODUCER_CACHE_SIZE;
     private boolean faultTolerantConnections = DEFAULT_FAULT_TOLERANT_CONNECTIONS;
 
     /**

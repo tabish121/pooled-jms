@@ -498,10 +498,10 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
     }
 
     /**
-     * Sets the maximum number of pooled Connections (defaults to one).  Each call to
+     * Sets the maximum number of pooled Connections (defaults to one). Each call to
      * {@link #createConnection} will result in a new Connection being created up to the max
      * connections value, once the maximum Connections have been created Connections are served
-     * in a last in first out ordering.
+     * from the pool of connections.
      *
      * @param maxConnections
      * 		the maximum Connections to pool for a given user / password combination.
@@ -632,5 +632,8 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
         props.setProperty("blockIfSessionPoolIsFull", Boolean.toString(isBlockIfSessionPoolIsFull()));
         props.setProperty("blockIfSessionPoolIsFullTimeout", Long.toString(getBlockIfSessionPoolIsFullTimeout()));
         props.setProperty("useProviderJMSContext", Boolean.toString(isUseProviderJMSContext()));
+        props.setProperty("faultTolerantConnections", Boolean.toString(isFaultTolerantConnections()));
+        props.setProperty("maxIdleSessionsPerConnection", Integer.toString(getMaxIdleSessionsPerConnection()));
+        props.setProperty("explicitProducerCacheSize", Integer.toString(getExplicitProducerCacheSize()));
     }
 }

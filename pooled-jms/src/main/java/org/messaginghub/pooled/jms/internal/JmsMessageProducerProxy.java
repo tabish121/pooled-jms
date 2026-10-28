@@ -94,7 +94,7 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
             try {
                 onDestroy.accept(this, destination);
             } catch (Exception ex) {
-                LOG.debug("Suppressed error from on destroy handler in producer proy.", ex);
+                LOG.debug("Suppressed error from on destroy handler in producer proxy.", ex);
             }
         }
     }
@@ -115,7 +115,7 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
             try {
                 onClose.accept(this, destination);
             } catch (Exception ex) {
-                LOG.debug("Suppressed error from on close handler in producer proy.", ex);
+                LOG.debug("Suppressed error from on close handler in producer proxy.", ex);
             }
         }
     }

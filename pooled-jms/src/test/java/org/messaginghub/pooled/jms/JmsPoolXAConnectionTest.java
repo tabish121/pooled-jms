@@ -109,11 +109,11 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
 
         assertNotNull(session);
 
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
         session.close();
 
         // Session should be ignoring close at this stage
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
     }
 
     @Test
@@ -125,11 +125,11 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
 
         assertNotNull(session);
 
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
         session.close();
 
         // Session should be ignoring close at this stage
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
     }
 
     @Test
@@ -141,11 +141,11 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
 
         assertNotNull(session);
 
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
         session.close();
 
         // Session should be ignoring close at this stage
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
     }
 
     @Test
@@ -158,7 +158,7 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
         assertThrows(JMSException.class, () -> connection.createSession());
 
         // Session should be invalidated as we don't know the state after failed register
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
     }
 
     @Test
@@ -171,7 +171,7 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
         assertThrows(JMSException.class, () -> connection.createSession());
 
         // Session should be invalidated as we don't know the state after failed register
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
     }
 
     @Test
@@ -183,7 +183,7 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
         assertThrows(JMSException.class, () -> connection.createSession());
 
         // Session should be invalidated as we don't know the state after failed enlist
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
     }
 
     @Test
@@ -195,6 +195,6 @@ class JmsPoolXAConnectionTest extends JmsPoolTestSupport  {
         assertThrows(JMSException.class, () -> connection.createSession());
 
         // Session should be invalidated as we don't know the state after failed enlist
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
     }
 }

@@ -251,7 +251,7 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
      *
      * @throws JMSException if the connection has been closed.
      */
-    public int getNumtIdleSessions() throws JMSException {
+    public int getNumIdleSessions() throws JMSException {
         return getStatistics().getIdleSessionCount();
     }
 

@@ -62,6 +62,45 @@ public class JmsPoolJMSContextTest extends JmsPoolTestSupport {
     }
 
     @Test
+    public void testStopAfterClosed() {
+        JMSContext context = cf.createContext();
+        assertNotNull(context.getMetaData());
+
+        context.close();
+
+        try {
+            context.stop();
+            fail("Should not be able to stop context from closed.");
+        } catch (IllegalStateRuntimeException jmsre) {}
+    }
+
+    @Test
+    public void testStartAfterClosed() {
+        JMSContext context = cf.createContext();
+        assertNotNull(context.getMetaData());
+
+        context.close();
+
+        try {
+            context.stop();
+            fail("Should not be able to start context from closed.");
+        } catch (IllegalStateRuntimeException jmsre) {}
+    }
+
+    @Test
+    public void testAcknowledgeAfterClosed() {
+        JMSContext context = cf.createContext();
+        assertNotNull(context.getMetaData());
+
+        context.close();
+
+        try {
+            context.acknowledge();
+            fail("Should not be able to acknowledge context from closed.");
+        } catch (IllegalStateRuntimeException jmsre) {}
+    }
+
+    @Test
     public void testGetMetaData() {
         JMSContext context = cf.createContext();
         assertNotNull(context.getMetaData());
@@ -465,6 +504,21 @@ public class JmsPoolJMSContextTest extends JmsPoolTestSupport {
             context.createContext(Session.AUTO_ACKNOWLEDGE);
             fail("Should not be able to call with invalid mode.");
         } catch (JMSRuntimeException jmsre) {}
+
+        try {
+            context.createContext(Session.CLIENT_ACKNOWLEDGE);
+            fail("Should not be able to call with invalid mode.");
+        } catch (JMSRuntimeException jmsre) {}
+
+        try {
+            context.createContext(Session.DUPS_OK_ACKNOWLEDGE);
+            fail("Should not be able to call with invalid mode.");
+        } catch (JMSRuntimeException jmsre) {}
+
+        try {
+            context.createContext(Session.SESSION_TRANSACTED);
+            fail("Should not be able to call with invalid mode.");
+        } catch (JMSRuntimeException jmsre) {}
     }
 
     @Test
@@ -711,5 +765,50 @@ public class JmsPoolJMSContextTest extends JmsPoolTestSupport {
             context.stop();
             fail("Cannot call stop on a closed context.");
         } catch (JMSRuntimeException jmsre) {}
+    }
+
+    @Test
+    public void testCloseIsIdempotentForProducerCreate() {
+        JMSContext context = cf.createContext();
+        assertNotNull(context.createProducer());
+        assertNotNull(context.createProducer());
+
+        context.close();
+        context.close(); // Second close should not invalidate state
+
+        try {
+            context.createProducer();
+            fail("Should not be able to create resource when context is closed");
+        } catch (IllegalStateRuntimeException isre) {}
+    }
+
+    @Test
+    public void testCloseIsIdempotentForCreateContext() {
+        JMSContext context = cf.createContext();
+        assertNotNull(context.createProducer());
+        assertNotNull(context.createProducer());
+
+        context.close();
+        context.close(); // Second close should not invalidate state
+
+        try {
+            context.createContext(Session.AUTO_ACKNOWLEDGE);
+            fail("Should not be able to create resource when context is closed");
+        } catch (IllegalStateRuntimeException isre) {}
+
+        try {
+            context.createContext(Session.CLIENT_ACKNOWLEDGE);
+            fail("Should not be able to create resource when context is closed");
+        } catch (IllegalStateRuntimeException isre) {}
+
+        try {
+            context.createContext(Session.DUPS_OK_ACKNOWLEDGE);
+            fail("Should not be able to create resource when context is closed");
+        } catch (IllegalStateRuntimeException isre) {}
+
+        try {
+            context.createContext(Session.SESSION_TRANSACTED);
+            fail("Should not be able to create resource when context is closed");
+        } catch (IllegalStateRuntimeException isre) {}
     }
 }

@@ -67,7 +67,7 @@ public abstract class JmsAbstractConnectionProxy<CP extends JmsAbstractConnectio
      */
     protected final Connection connection;
 
-    private volatile int closed;
+    private volatile boolean closed;
     private volatile long becameIdleAt;
     private ExceptionListener connectionFactoryExceptionListener;
 
@@ -302,7 +302,11 @@ public abstract class JmsAbstractConnectionProxy<CP extends JmsAbstractConnectio
         // regardless of any assigned exception that was set on the wrapper object
         // that was given to the borrowing client code.
         if (connectionFactoryExceptionListener != null) {
-            connectionFactoryExceptionListener.onException(exception);
+            try {
+                connectionFactoryExceptionListener.onException(exception);
+            } catch (Exception ex) {
+                LOG.trace("Ignored exception from the connection factory assigned exception listener:", ex);
+            }
         }
     }
 
@@ -381,15 +385,17 @@ public abstract class JmsAbstractConnectionProxy<CP extends JmsAbstractConnectio
     }
 
     void internalClose() {
+        closed = true;
+
         try {
             sessionPool.destroy();
         } catch (Exception ex) {
-            LOG.debug("Suppressed error from on sesion pool destroy in connection proy.", ex);
+            LOG.debug("Suppressed error from on session pool destroy in connection proxy.", ex);
         } finally {
             try {
                 connection.close();
             } catch (Exception ex) {
-                LOG.trace("Suppressed error from provider connection close in connection proy.", ex);
+                LOG.trace("Suppressed error from provider connection close in connection proxy.", ex);
             }
         }
     }
@@ -438,7 +444,7 @@ public abstract class JmsAbstractConnectionProxy<CP extends JmsAbstractConnectio
      * {@return <code>true</code> when the underlying provider is actually closed}
      */
     protected boolean isClosed() {
-        return closed > 0;
+        return closed;
     }
 
     /**

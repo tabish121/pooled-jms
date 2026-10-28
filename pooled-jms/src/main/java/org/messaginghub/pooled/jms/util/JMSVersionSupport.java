@@ -40,6 +40,7 @@ public final class JMSVersionSupport {
 
     private final boolean sharedSubscriptions;
     private final boolean delayedDelivery;
+    private final boolean completionListenerSupport;
 
     /**
      * Create a new instance of the version support helper tied to the given connection
@@ -53,7 +54,7 @@ public final class JMSVersionSupport {
             final ConnectionMetaData connectionMetaData = connection.getMetaData();
 
             jmsMajorVersion = connectionMetaData.getJMSMajorVersion();
-            jmsMinorVersion = connectionMetaData.getJMSMajorVersion();
+            jmsMinorVersion = connectionMetaData.getJMSMinorVersion();
         } catch (JMSException ex) {
             LOG.debug("Error while fetching JMS API version from provider, defaulting to v3.0");
             jmsMajorVersion = 3;
@@ -63,9 +64,11 @@ public final class JMSVersionSupport {
         if (isJMSVersionSupported(2, 0)) {
             sharedSubscriptions = true;
             delayedDelivery = true;
+            completionListenerSupport = true;
         } else {
             sharedSubscriptions = false;
             delayedDelivery = false;
+            completionListenerSupport = false;
         }
     }
 
@@ -118,7 +121,7 @@ public final class JMSVersionSupport {
      * @throws JMSException if completion listeners is not supported.
      */
     public void enforceCompletionListenerSupport() throws JMSException {
-        if (!delayedDelivery) {
+        if (!completionListenerSupport) {
             checkClientJMSVersionSupport(2, 0);
         }
     }

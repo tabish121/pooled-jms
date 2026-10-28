@@ -52,7 +52,7 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
     /**
      * Default value for the auto start flag of this JMS Context wrapper.
      */
-    public static boolean DEFAULT_JMS_CONTEXT_AUTO_START = true;
+    public static final boolean DEFAULT_JMS_CONTEXT_AUTO_START = true;
 
     private final JmsPoolAbstractConnection connection;
     private final AtomicLong connectionRefCount;
@@ -61,6 +61,7 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
     private volatile JmsPoolAbstractSession session;
     private volatile JmsPoolMessageProducer sharedProducer;
     private volatile boolean autoStart = DEFAULT_JMS_CONTEXT_AUTO_START;
+    private volatile boolean closed;
 
     JmsPoolJMSContext(JmsPoolAbstractConnection connection, int sessionMode) {
         this(connection, sessionMode, new AtomicLong(1));
@@ -74,6 +75,8 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public void start() {
+        checkClosed();
+
         try {
             connection.start();
         } catch (JMSException jmse) {
@@ -83,6 +86,8 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public void stop() {
+        checkClosed();
+
         try {
             connection.stop();
         } catch (JMSException jmse) {
@@ -92,28 +97,32 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public synchronized void close() {
-        JMSRuntimeException failure = null;
+        if (!closed) {
+            closed = true;
 
-        try {
-            if (session != null) {
-                session.close();
-            }
-        } catch (JMSException jmse) {
-            failure = JMSExceptionSupport.createRuntimeException(jmse);
-        }
+            JMSRuntimeException failure = null;
 
-        if (connectionRefCount.decrementAndGet() == 0) {
             try {
-                connection.close();
+                if (session != null) {
+                    session.close();
+                }
             } catch (JMSException jmse) {
-                if (failure == null) {
-                    failure = JMSExceptionSupport.createRuntimeException(jmse);
+                failure = JMSExceptionSupport.createRuntimeException(jmse);
+            }
+
+            if (connectionRefCount.decrementAndGet() == 0) {
+                try {
+                    connection.close();
+                } catch (JMSException jmse) {
+                    if (failure == null) {
+                        failure = JMSExceptionSupport.createRuntimeException(jmse);
+                    }
                 }
             }
-        }
 
-        if (failure != null) {
-            throw failure;
+            if (failure != null) {
+                throw failure;
+            }
         }
     }
 
@@ -121,6 +130,14 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public void acknowledge() {
+        checkClosed();
+
+        // Because the pooled version of the JMS context uses a shared connection and therefore shared sessions
+        // we don't currently support this method as calling acknowledge on a session that was returned to the pool
+        // with message that were not acknowledged by a previous user we could end up sending an acknowledgement for
+        // messages that were not meant to have been. In a future version we could consider alternatives to allow
+        // this to work. One possible option is to add support for asking the connection for an non-pooled session
+        // such that we know the state it arrives in and can safely call the acknowledge API.
         if (getSessionMode() == Session.CLIENT_ACKNOWLEDGE) {
             throw new JMSRuntimeException("Pooled JMS Context does not support acknowledge() client must acknowledge messages");
         }
@@ -278,10 +295,7 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public synchronized JMSContext createContext(int sessionMode) {
-        if (connectionRefCount.get() == 0) {
-            throw new IllegalStateRuntimeException("The Connection is closed");
-        }
-
+        checkClosed();
         validateSessionMode(sessionMode);
 
         connectionRefCount.incrementAndGet();
@@ -293,13 +307,13 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public JMSProducer createProducer() {
-        if (connectionRefCount.get() == 0) {
-            throw new IllegalStateRuntimeException("The Connection is closed");
-        }
+        checkClosed();
 
         try {
             if (sharedProducer == null) {
                 synchronized (this) {
+                    checkClosed();
+
                     if (sharedProducer == null) {
                         sharedProducer = (JmsPoolMessageProducer) getSession().createProducer(null);
                     }
@@ -429,6 +443,8 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public String getClientID() {
+        checkClosed();
+
         try {
             return connection.getClientID();
         } catch (JMSException jmse) {
@@ -438,6 +454,8 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public void setClientID(String clientID) {
+        checkClosed();
+
         try {
             connection.setClientID(clientID);
         } catch (JMSException jmse) {
@@ -447,6 +465,8 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public ExceptionListener getExceptionListener() {
+        checkClosed();
+
         try {
             return connection.getExceptionListener();
         } catch (JMSException jmse) {
@@ -456,6 +476,8 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public void setExceptionListener(ExceptionListener listener) {
+        checkClosed();
+
         try {
             connection.setExceptionListener(listener);
         } catch (JMSException jmse) {
@@ -495,6 +517,8 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
      * @return the wrapped JMS {@link Connection}
      */
     Connection getProviderConnection() {
+        checkClosed();
+
         try {
             return connection.getProviderConnection();
         } catch (JMSException jmsex) {
@@ -505,8 +529,12 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
     //----- Internal implementation methods ----------------------------------//
 
     JmsPoolAbstractSession getSession() {
+        checkClosed();
+
         if (session == null) {
             synchronized (this) {
+                checkClosed();
+
                 if (session == null) {
                     try {
                         session = (JmsPoolAbstractSession) connection.createSession(getSessionMode());
@@ -534,6 +562,12 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
         }
 
         return consumer;
+    }
+
+    private void checkClosed() throws IllegalStateRuntimeException {
+        if (closed) {
+            throw new IllegalStateRuntimeException("The JMS Context was previously closed");
+        }
     }
 
     private void validateSessionMode(int mode) {

@@ -349,7 +349,7 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
                 try {
                     session.internalClose();
                 } catch (Exception e) {
-                    LOG.trace("Ingoered error on close of pooled session", e);
+                    LOG.trace("Ignored error on close of pooled session", e);
                 }
             }
 
@@ -369,7 +369,7 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
             try {
                 session.internalClose();
             } catch (Exception e) {
-                LOG.trace("Ingoered error on close of pooled session", e);
+                LOG.trace("Ignored error on close of pooled session", e);
             }
 
             return session;

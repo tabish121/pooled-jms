@@ -34,7 +34,7 @@ public class JmsXAConnectionProxy extends JmsAbstractConnectionProxy<JmsXAConnec
 
     @Override
     public XASession createXASession() throws JMSException {
-        return doCreateSession(true, Session.SESSION_TRANSACTED);  // TODO what are the correct parameters?
+        return doCreateSession(true, Session.SESSION_TRANSACTED);
     }
 
     @Override

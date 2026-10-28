@@ -404,9 +404,11 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
         } catch (JMSException ex) {
             LOG.trace("Ignoring exception while closing internal JMS session: " + ex.getMessage(), ex);
         } finally {
-            closed = true;
-            anonymousProducer = null;
-            cachedProducers.clear();
+            synchronized (this) {
+                closed = true;
+                anonymousProducer = null;
+                cachedProducers.clear();
+            }
         }
     }
 
@@ -476,7 +478,7 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
         // Nothing done here currently but we could use this to track statistics later.
     }
 
-    private void onProducerDestroyed(JmsMessageProducerProxy producer, Destination destination) {
+    private synchronized void onProducerDestroyed(JmsMessageProducerProxy producer, Destination destination) {
         // Ensure that the anonymous reference are cleared of a destroyed producer resource or the
         // cache is updated if enabled to remove the destroyed named producer.
         if (producer == anonymousProducer) {
@@ -506,7 +508,7 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
      */
     protected void checkClosed() throws IllegalStateException {
         if (isClosed()) {
-            throw new IllegalStateException("Connection has already been closed");
+            throw new IllegalStateException("Session has already been closed");
         }
     }
 

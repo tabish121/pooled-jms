@@ -93,9 +93,9 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
         session.close();
-        assertEquals(1, connection.getNumtIdleSessions());
+        assertEquals(1, connection.getNumIdleSessions());
 
         try {
             session.close();
@@ -137,7 +137,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         JmsPoolSession session = (JmsPoolSession) connection.createSession(Session.SESSION_TRANSACTED);
 
         assertEquals(1, connection.getNumSessions());
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
 
         MockJMSSession mockSession = (MockJMSSession) session.getProviderSession();
         mockSession.addSessionListener(new MockJMSDefaultSessionListener() {
@@ -161,7 +161,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         assertTrue(rolledBack.get(), "Session should rollback on close");
 
         assertEquals(0, connection.getNumSessions());
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
     }
 
     @Test
@@ -244,7 +244,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         // All back in the pool now
         assertEquals(0, connection.getNumActiveSessions());
-        assertEquals(1, connection.getNumtIdleSessions());
+        assertEquals(1, connection.getNumIdleSessions());
         assertEquals(1, connection.getNumSessions());
 
         connection.close();
@@ -262,7 +262,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         // Create one and check that stats follow
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         assertEquals(1, connection.getNumActiveSessions());
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
         assertEquals(1, connection.getNumSessions());
 
         try {
@@ -272,14 +272,14 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         // Nothing should have changed as we didn't create anything.
         assertEquals(1, connection.getNumActiveSessions());
-        assertEquals(0, connection.getNumtIdleSessions());
+        assertEquals(0, connection.getNumIdleSessions());
         assertEquals(1, connection.getNumSessions());
 
         session.close();
 
         // All back in the pool now
         assertEquals(0, connection.getNumActiveSessions());
-        assertEquals(1, connection.getNumtIdleSessions());
+        assertEquals(1, connection.getNumIdleSessions());
         assertEquals(1, connection.getNumSessions());
 
         connection.close();
@@ -301,7 +301,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         // All back in the pool now.
         assertEquals(0, connection.getNumActiveSessions());
-        assertEquals(2, connection.getNumtIdleSessions());
+        assertEquals(2, connection.getNumIdleSessions());
         assertEquals(2, connection.getNumSessions());
 
         connection.close();
@@ -327,7 +327,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         // All back in the pool now.
         assertEquals(0, connection.getNumActiveSessions());
-        assertEquals(NUM_SESSIONS, connection.getNumtIdleSessions());
+        assertEquals(NUM_SESSIONS, connection.getNumIdleSessions());
         assertEquals(NUM_SESSIONS, connection.getNumSessions());
 
         connection.close();
@@ -362,7 +362,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         // All back in the pool now.
         assertEquals(0, connection.getNumActiveSessions());
-        assertEquals(NUM_IDLE_SESSIONS, connection.getNumtIdleSessions());
+        assertEquals(NUM_IDLE_SESSIONS, connection.getNumIdleSessions());
         assertEquals(NUM_IDLE_SESSIONS, connection.getNumSessions());
 
         connection.close();
@@ -401,7 +401,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         // All back in the pool now.
         assertEquals(0, connection.getNumActiveSessions());
-        assertEquals(NUM_SESSIONS, connection.getNumtIdleSessions());
+        assertEquals(NUM_SESSIONS, connection.getNumIdleSessions());
         assertEquals(NUM_SESSIONS, connection.getNumSessions());
 
         connection.close();

@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 
 import jakarta.jms.IllegalStateRuntimeException;
 import jakarta.jms.JMSException;
+import jakarta.jms.Session;
 import jakarta.jms.XAConnection;
 import jakarta.jms.XAConnectionFactory;
 import jakarta.jms.XAJMSContext;
@@ -278,7 +279,7 @@ public class JmsPoolXAConnectionFactory extends JmsPoolAbstractConnectionFactory
 
     @Override
     public XAJMSContext createXAContext(String userName, String password) {
-        return (XAJMSContext) createContext(userName, password, 0);
+        return (XAJMSContext) createContext(userName, password, Session.SESSION_TRANSACTED);
     }
 
     @Override
