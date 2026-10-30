@@ -95,6 +95,10 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
      * 		The maximum number of connection to keep in the pool.
      */
     public synchronized void setMaxConnections(int maxConnections) {
+        if (maxConnections < 0) {
+            throw new IllegalArgumentException("Maximum number of connection cannot be set to a negative value");
+        }
+
         this.maxConnections = Math.max(DEFAULT_MAX_CONNECTIONS, maxConnections);
     }
 
@@ -290,7 +294,8 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
     }
 
     /**
-     * Terminal operation that closes and destroys all pooled connections and cannot be undone.
+     * Stops the pool closing all currently open connections and blocking attempts to create new
+     * connections until the pool is started again.
      */
     public synchronized void stop() {
         if (isStarted()) {

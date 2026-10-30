@@ -24,6 +24,7 @@ import jakarta.jms.Connection;
 import jakarta.jms.ConnectionFactory;
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
+import jakarta.jms.ResourceAllocationException;
 import jakarta.jms.Session;
 import jakarta.jms.XAConnection;
 import jakarta.jms.XAConnectionFactory;
@@ -356,21 +357,24 @@ public abstract class JmsAbstractConnectionProxyFactory<CF, CP extends JmsAbstra
 
     /**
      * Controls the behavior of the internal {@link Session} pool. By default the call to
-     * Connection.getSession() will block if the {@link Session} pool is full.  This setting
-     * will affect how long it blocks and throws an exception after the timeout.
+     * Connection.getSession() will block if the {@link Session} pool is full. This setting
+     * will affect how long it blocks before it throws an exception once the timeout is reached.
      * <p>
      * The size of the session pool is controlled by the {@link #setMaxSessionsPerConnection(int)}
-     * value that has been configured.  Whether or not the call to create session blocks is controlled
+     * value that has been configured. Whether or not the call to create session blocks is controlled
      * by the {@link #setBlockIfSessionPoolIsFull(boolean)} property.
      * <p>
-     * By default the timeout defaults to -1 and a blocked call to create a Session will
-     * wait indefinitely for a new {@link Session}
+     * By default the timeout defaults to -1 and a blocked call to create a Session will wait
+     * indefinitely for a new {@link Session}. A value of zero for the timeout is treated as
+     * though the {@link #isBlockIfSessionPoolIsFull()} was set to false meaning that if there
+     * is no available session an {@link ResourceAllocationException} will be thrown.
      *
      * @param blockIfSessionPoolIsFullTimeout
-     * 		if blockIfSessionPoolIsFullTimeout is true then use this setting
+     * 		if {@link #isBlockIfSessionPoolIsFull()} is true then use this setting
      *      to configure how long to block before an error is thrown.
      *
      * @see #setMaxSessionsPerConnection(int)
+     * @see #setBlockIfSessionPoolIsFull(boolean)
      */
     public void setBlockIfSessionPoolIsFullTimeout(long blockIfSessionPoolIsFullTimeout) {
         configuration.setBlockIfSessionPoolIsFullTimeout(blockIfSessionPoolIsFullTimeout);
