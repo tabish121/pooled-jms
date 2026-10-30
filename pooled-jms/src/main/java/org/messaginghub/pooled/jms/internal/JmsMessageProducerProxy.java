@@ -17,8 +17,8 @@
 package org.messaginghub.pooled.jms.internal;
 
 import java.lang.invoke.MethodHandles;
-import java.util.function.BiConsumer;
 
+import org.messaginghub.pooled.jms.util.JMSVersionSupport;
 import org.messaginghub.pooled.jms.util.Referenced;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,82 +41,50 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final JmsAbstractSessionProxy<?> session;
     private final MessageProducer producer;
     private final Destination destination;
-    private final BiConsumer<JmsMessageProducerProxy, Destination> onClose;
-    private final BiConsumer<JmsMessageProducerProxy, Destination> onDestroy;
     private final Referenced referenced;
+    private final JmsMessageProducerProxyManager manager;
+    private final JMSVersionSupport versionSupport;
 
     private volatile boolean closed;
 
-    JmsMessageProducerProxy(JmsAbstractSessionProxy<?> session,
+    JmsMessageProducerProxy(JMSVersionSupport versionSupport,
                             MessageProducer producer,
                             Destination destination,
                             Referenced referenced,
-                            BiConsumer<JmsMessageProducerProxy, Destination> onClose,
-                            BiConsumer<JmsMessageProducerProxy, Destination> onDestroy) {
-        this.session = session;
+                            JmsMessageProducerProxyManager manager) {
+        this.versionSupport = versionSupport;
         this.producer = producer;
-        this.onClose = onClose;
-        this.onDestroy = onDestroy;
         this.destination = destination;
         this.referenced = referenced;
-    }
-
-    /**
-     * Attempts to take a new reference out on this message producer proxy
-     *
-     * @return this message producer proxy
-     *
-     * @throws IllegalStateException if the message producer proxy is already closed
-     */
-    public synchronized JmsMessageProducerProxy acquire() throws IllegalStateException {
-        checkClosed();
-        referenced.acquire();
-        return this;
+        this.manager = manager;
     }
 
     /**
      * Called to force the JMS message producer and this proxy to be closed and not be served
      * again to any callers who create producers from the parent session.
      */
-    public synchronized void destroy() {
+    public void destroy() {
         if (!closed) {
-            closed = true;
-
-            try {
-                producer.close();
-            } catch (JMSException ex) {
-                LOG.debug("Suppressed error from close of wrapped JMS MessageProducer.", ex);
-            }
-
-            try {
-                onDestroy.accept(this, destination);
-            } catch (Exception ex) {
-                LOG.debug("Suppressed error from on destroy handler in producer proxy.", ex);
-            }
+            manager.destroyProducer(this, destination);
         }
     }
 
     @Override
-    public synchronized void close() {
-        if (checkIfProducerSilentlyClosed()) {
-            destroy();
-        } else if (referenced.release() && !closed) {
-            closed = true;
+    public void close() {
+        // The fact that the close could be called repeatedly before the proxy is actually
+        // closed is by design as the producer can be shared among many upper level pooled
+        // JMS message producer wrappers that each need to close before this one is and in
+        // some cases it never closes unless the underlying producer is detected as failed,
+        // most specifically when using a singular anonymous producer for all sends.
 
-            try {
-                producer.close();
-            } catch (JMSException ex) {
-                LOG.debug("Suppressed error from close of wrapped JMS MessageProducer.", ex);
-            }
-
-            try {
-                onClose.accept(this, destination);
-            } catch (Exception ex) {
-                LOG.debug("Suppressed error from on close handler in producer proxy.", ex);
-            }
+        if (closed) {
+            return;
+        } else if (checkIfSeeminglyClosed()) {
+            manager.destroyProducer(this, destination);
+        } else {
+            manager.tryReleaseReference(this, destination);
         }
     }
 
@@ -124,7 +92,7 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
      * {@return if the JMS provider support delivery delay for its producers}
      */
     public boolean isDelayedDeliverySupported() {
-        return session.getVersionSupport().isDelayedDeliverySupported();
+        return versionSupport.isDelayedDeliverySupported();
     }
 
     /**
@@ -133,7 +101,7 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
      * @throws JMSException if delivery delay is not supported by the provider
      */
     public void enforceDelayedDeliverySupport() throws JMSException {
-        session.getVersionSupport().enforceDelayedDeliverySupport();
+        versionSupport.enforceDelayedDeliverySupport();
     }
 
     /**
@@ -142,7 +110,7 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
      * @throws JMSException if completion listeners are not supported by the provider
      */
     public void enforceCompletionListenerSupport() throws JMSException {
-        session.getVersionSupport().enforceCompletionListenerSupport();
+        versionSupport.enforceCompletionListenerSupport();
     }
 
     /**
@@ -379,7 +347,30 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
         }
     }
 
-    private boolean checkIfProducerSilentlyClosed() {
+    //----- Internal API meant to be used by the manager
+
+    JmsMessageProducerProxy acquireReference() {
+        referenced.acquire();
+        return this;
+    }
+
+    boolean releaseReference() {
+        return referenced.release();
+    }
+
+    void doCloseProducer() {
+        if (!closed) {
+            closed = true;
+
+            try {
+                producer.close();
+            } catch (JMSException ex) {
+                LOG.debug("Suppressed error from close of wrapped JMS MessageProducer.", ex);
+            }
+        }
+    }
+
+    boolean checkIfSeeminglyClosed() {
         boolean seemsClosed = false;
 
         try {

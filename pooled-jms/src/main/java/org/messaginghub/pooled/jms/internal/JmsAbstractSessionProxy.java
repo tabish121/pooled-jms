@@ -67,14 +67,8 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
     protected final Session session;
     protected final JMSVersionSupport versionSupport;
 
-    private final Map<Destination, JmsMessageProducerProxy> cachedProducers;
+    private final ProducerProxyManager producerManager;
     private final JmsSessionProxyManager<SP> manager;
-
-    // We either only create anonymous producers in which case these values will hold an instance
-    // that we hand out to every caller as the sole JMS message producer in use be the pooled JMS
-    // connection or we are creating explicitly bound JMS producers and these values are used as
-    // a cache for any anonymous producers requested.
-    private volatile JmsMessageProducerProxy anonymousProducer;
 
     private volatile boolean closed;
 
@@ -98,12 +92,7 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
         this.versionSupport = versionSupprt;
         this.session = session;
         this.manager = manager;
-
-        if (!configuration.isUseAnonymousProducers() && configuration.getExplicitProducerCacheSize() > 0) {
-            cachedProducers = new ProducerLRUCache(configuration.getExplicitProducerCacheSize());
-        } else {
-            cachedProducers = DiscardingMap.getInstance();
-        }
+        this.producerManager = new ProducerProxyManager(configuration);
     }
 
     /**
@@ -147,19 +136,19 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
     @Override
     public JmsMessageProducerProxy createProducer(Destination destination) throws JMSException {
         checkClosed();
-        return getOrCreateProducer(destination);
+        return producerManager.getOrCreateProducer(destination);
     }
 
     @Override
     public JmsMessageProducerProxy createPublisher(Topic topic) throws JMSException {
         checkClosed();
-        return getOrCreateProducer(topic);
+        return producerManager.getOrCreateProducer(topic);
     }
 
     @Override
     public JmsMessageProducerProxy createSender(Queue queue) throws JMSException {
         checkClosed();
-        return getOrCreateProducer(queue);
+        return producerManager.getOrCreateProducer(queue);
     }
 
     //----- JMS Message consumer create APIs ---------------------------------//
@@ -404,11 +393,8 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
         } catch (JMSException ex) {
             LOG.trace("Ignoring exception while closing internal JMS session: " + ex.getMessage(), ex);
         } finally {
-            synchronized (this) {
-                closed = true;
-                anonymousProducer = null;
-                cachedProducers.clear();
-            }
+            closed = true;
+            producerManager.clear();
         }
     }
 
@@ -426,66 +412,6 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
 
     JMSVersionSupport getVersionSupport() {
         return versionSupport;
-    }
-
-    /**
-     * Returns a JMS message producer proxy either from a cache or by creating a new instance
-     *
-     * @param destination
-     * 		The destination the producer will send to (null if anonymous)
-     *
-     * @return a JMS message producer proxy that wraps the providers JMS message producer
-     *
-     * @throws JMSException if an error occurs while attempt to obtain a producer instance
-     */
-    protected synchronized JmsMessageProducerProxy getOrCreateProducer(Destination destination) throws JMSException {
-        JmsMessageProducerProxy delegate = null;
-
-        if (isUseAnonymousProducer() || destination == null) {
-            delegate = anonymousProducer;
-
-            if (delegate == null) {
-                // Anonymous instance is not reference counted so create a fixed reference instance
-                delegate = new JmsMessageProducerProxy(this,
-                                                           session.createProducer(null),
-                                                           null,
-                                                           new FixedReference(),
-                                                           this::onProducerClosed,
-                                                           this::onProducerDestroyed);
-
-                anonymousProducer = delegate;
-            }
-        } else {
-            delegate = cachedProducers.get(destination);
-
-            if (delegate == null) {
-                // Cached instance is held until evicted from the cache so take an additional reference on create.
-                delegate = new JmsMessageProducerProxy(this,
-                                                           session.createProducer(destination),
-                                                           destination,
-                                                           new ReferenceCounted().acquire(),
-                                                           this::onProducerClosed,
-                                                           this::onProducerDestroyed);
-
-                cachedProducers.put(destination, delegate);
-            }
-        }
-
-        return delegate.acquire();
-    }
-
-    private synchronized void onProducerClosed(JmsMessageProducerProxy producer, Destination destination) {
-        // Nothing done here currently but we could use this to track statistics later.
-    }
-
-    private synchronized void onProducerDestroyed(JmsMessageProducerProxy producer, Destination destination) {
-        // Ensure that the anonymous reference are cleared of a destroyed producer resource or the
-        // cache is updated if enabled to remove the destroyed named producer.
-        if (producer == anonymousProducer) {
-            anonymousProducer = null;
-        } else {
-            cachedProducers.remove(destination);
-        }
     }
 
     private boolean isUseAnonymousProducer() {
@@ -520,6 +446,104 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
     protected void checkClosedRuntimeEx() throws IllegalStateRuntimeException {
         if (isClosed()) {
             throw new IllegalStateRuntimeException("Session has already been closed");
+        }
+    }
+
+    private class ProducerProxyManager implements JmsMessageProducerProxyManager {
+
+        private final Map<Destination, JmsMessageProducerProxy> cachedProducers;
+
+        // We either only create anonymous producers in which case these values will hold an instance
+        // that we hand out to every caller as the sole JMS message producer in use be the pooled JMS
+        // connection or we are creating explicitly bound JMS producers and this value
+        private volatile JmsMessageProducerProxy anonymousProducer;
+
+        public ProducerProxyManager(JmsConnectionProxyConfiguration configuration) {
+            if (!configuration.isUseAnonymousProducers() && configuration.getExplicitProducerCacheSize() > 0) {
+                cachedProducers = new ProducerLRUCache(configuration.getExplicitProducerCacheSize());
+            } else {
+                cachedProducers = DiscardingMap.getInstance();
+            }
+        }
+
+        public synchronized void clear() {
+            // The assumption here is that the session proxy calls this only after it has closed
+            // the parent JMS Session from the provider and so we do not need to close each instance
+            // of the pooled producer instances here.
+            anonymousProducer = null;
+            cachedProducers.clear();
+        }
+
+        @Override
+        public synchronized JmsMessageProducerProxy tryReleaseReference(JmsMessageProducerProxy producer, Destination destination) {
+            // Only cached producers ever become unreferenced so just clear the element from the cache in
+            // that case to ensure it is gone. The fixed anonymous producer instance is given a reference
+            // that can never be released.
+            if (producer.releaseReference()) {
+                cachedProducers.remove(destination);
+                producer.doCloseProducer();
+            }
+
+            return producer;
+        }
+
+        @Override
+        public synchronized JmsMessageProducerProxy destroyProducer(JmsMessageProducerProxy producer, Destination destination) {
+            // Ensure that the anonymous reference are cleared of a destroyed producer resource or the
+            // cache is updated if enabled to remove the destroyed named producer.
+            if (producer == anonymousProducer) {
+                anonymousProducer = null;
+            } else {
+                cachedProducers.remove(destination);
+            }
+
+            producer.doCloseProducer();
+
+            return producer;
+        }
+
+        /**
+         * Returns a JMS message producer proxy either from a cache or by creating a new instance
+         *
+         * @param destination
+         * 		The destination the producer will send to (null if anonymous)
+         *
+         * @return a JMS message producer proxy that wraps the providers JMS message producer
+         *
+         * @throws JMSException if an error occurs while attempt to obtain a producer instance
+         */
+        protected synchronized JmsMessageProducerProxy getOrCreateProducer(Destination destination) throws JMSException {
+            JmsMessageProducerProxy delegate = null;
+
+            if (isUseAnonymousProducer() || destination == null) {
+                delegate = anonymousProducer;
+
+                if (delegate == null) {
+                    // Anonymous instance is not reference counted so create a fixed reference instance
+                    delegate = new JmsMessageProducerProxy(versionSupport,
+                                                           session.createProducer(null),
+                                                           null,
+                                                           new FixedReference(),
+                                                           this);
+
+                    anonymousProducer = delegate;
+                }
+            } else {
+                delegate = cachedProducers.get(destination);
+
+                if (delegate == null) {
+                    // Cached instance is held until evicted from the cache so take an additional reference on create.
+                    delegate = new JmsMessageProducerProxy(versionSupport,
+                                                           session.createProducer(destination),
+                                                           destination,
+                                                           new ReferenceCounted().acquire(),
+                                                           this);
+
+                    cachedProducers.put(destination, delegate);
+                }
+            }
+
+            return delegate.acquireReference();
         }
     }
 
