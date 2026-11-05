@@ -39,6 +39,7 @@ public class JMSMessagePropertySupport {
      * @return the new converted value type.
      *
      * @throws JMSException if an error occurs while performing the conversion
+     * @throws NumberFormatException for string to primitive conversions where the value cannot be converted
      */
     @SuppressWarnings("unchecked")
     public static <T> T convertPropertyTo(String name, Object value, Class<T> target) throws JMSException {

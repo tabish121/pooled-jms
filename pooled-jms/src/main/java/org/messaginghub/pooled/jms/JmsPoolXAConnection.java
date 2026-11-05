@@ -199,7 +199,7 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
                     session.internalClose(true);
                 } finally {
                     session = null;
-                    safeGetConnection().close();
+                    connection.close(); // Release the synchronizations reference on the connection
                 }
             }
         }
@@ -215,7 +215,7 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
                     session.internalClose(false);
                 } finally {
                     session = null;
-                    safeGetConnection().close();
+                    connection.close(); // Release the synchronizations reference on the connection
                 }
             }
         }

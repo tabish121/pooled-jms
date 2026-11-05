@@ -17,6 +17,7 @@
 package org.messaginghub.pooled.jms.internal;
 
 import java.lang.invoke.MethodHandles;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import org.messaginghub.pooled.jms.util.JMSVersionSupport;
 import org.messaginghub.pooled.jms.util.Referenced;
@@ -41,13 +42,16 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+    private static final AtomicIntegerFieldUpdater<JmsMessageProducerProxy> CLOSED_UPDATER =
+            AtomicIntegerFieldUpdater.newUpdater(JmsMessageProducerProxy.class, "closed");
+
     private final MessageProducer producer;
     private final Destination destination;
     private final Referenced referenced;
     private final JmsMessageProducerProxyManager manager;
     private final JMSVersionSupport versionSupport;
 
-    private volatile boolean closed;
+    private volatile int closed;
 
     JmsMessageProducerProxy(JMSVersionSupport versionSupport,
                             MessageProducer producer,
@@ -66,7 +70,7 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
      * again to any callers who create producers from the parent session.
      */
     public void destroy() {
-        if (!closed) {
+        if (!isClosed()) {
             manager.destroyProducer(this, destination);
         }
     }
@@ -79,7 +83,7 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
         // some cases it never closes unless the underlying producer is detected as failed,
         // most specifically when using a singular anonymous producer for all sends.
 
-        if (closed) {
+        if (isClosed()) {
             return;
         } else if (checkIfSeeminglyClosed()) {
             manager.destroyProducer(this, destination);
@@ -333,7 +337,7 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
      * @return <code>true</code> if the producer has been closed.
      */
     protected boolean isClosed() {
-        return closed;
+        return closed > 0;
     }
 
     /**
@@ -359,9 +363,7 @@ public class JmsMessageProducerProxy implements MessageProducer, TopicPublisher,
     }
 
     void doCloseProducer() {
-        if (!closed) {
-            closed = true;
-
+        if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
             try {
                 producer.close();
             } catch (JMSException ex) {

@@ -93,17 +93,17 @@ public class JmsPoolXAConnectionFactory extends JmsPoolAbstractConnectionFactory
     /**
      * Transaction manager that must be assigned for enlistment to take affect
      */
-    private TransactionManager transactionManager;
+    private volatile TransactionManager transactionManager;
 
     /**
      * Set if the transaction manager comes from JNDI configuration
      */
-    private boolean tmFromJndi;
+    private volatile boolean tmFromJndi;
 
     /**
      * The JDNI name for the configuration from this connection factory
      */
-    private String tmJndiName = "java:/TransactionManager";
+    private volatile String tmJndiName = "java:/TransactionManager";
 
     /**
      * Creates the pooling connection factory in the started state but the application must configure

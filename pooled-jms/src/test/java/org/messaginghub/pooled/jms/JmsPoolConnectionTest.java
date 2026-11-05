@@ -604,6 +604,7 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
         connection2.close();
     }
 
+    @Test
     public void testUniqueExceptionListenersGetsNotified() throws Exception {
         final CountDownLatch signal1 = new CountDownLatch(1);
         final CountDownLatch signal2 = new CountDownLatch(1);

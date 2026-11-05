@@ -560,6 +560,8 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
             // Closes the cache's reference to the producer which will close it fully
             // if the producer is not reference currently by any other client code.
             final JmsMessageProducerProxy producer = eldest.getValue();
+
+            // TODO: Close here can result in concurrent modification of the LRU cache map
             try {
                 producer.close();
             } catch (Exception ex) {}

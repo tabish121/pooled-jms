@@ -476,4 +476,15 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
         assertThrows(IllegalStateRuntimeException.class, () -> cf.createContext("test", null));
         assertThrows(IllegalStateRuntimeException.class, () -> cf.createContext(null, "test"));
     }
+
+    @Test
+    public void testLimitsOnConfigurationValues() throws Exception {
+        cf = new JmsPoolConnectionFactory();
+
+        assertThrows(IllegalArgumentException.class, () -> cf.setMaxConnections(-1));
+        assertThrows(IllegalArgumentException.class, () -> cf.setExplicitProducerCacheSize(-1));
+        assertThrows(IllegalArgumentException.class, () -> cf.setMaxSessionsPerConnection(-1));
+        assertThrows(IllegalArgumentException.class, () -> cf.setMaxIdleSessionsPerConnection(-1));
+        assertThrows(IllegalArgumentException.class, () -> cf.setBlockIfSessionPoolIsFullTimeout(-2));
+    }
 }

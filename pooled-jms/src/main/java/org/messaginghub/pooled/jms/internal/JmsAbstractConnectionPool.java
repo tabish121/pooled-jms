@@ -19,6 +19,7 @@ package org.messaginghub.pooled.jms.internal;
 import java.lang.invoke.MethodHandles;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
@@ -31,6 +32,7 @@ import java.util.function.Consumer;
 
 import org.messaginghub.pooled.jms.JmsPoolConnectionFactoryStatistics;
 import org.messaginghub.pooled.jms.JmsPoolConnectionStatistics;
+import org.messaginghub.pooled.jms.util.TrackableThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -95,6 +97,10 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
      * 		The maximum number of connection to keep in the pool.
      */
     public synchronized void setMaxConnections(int maxConnections) {
+        if (maxConnections < 0) {
+            throw new IllegalArgumentException("Maximum number of connection cannot be set to a negative value");
+        }
+
         this.maxConnections = Math.max(DEFAULT_MAX_CONNECTIONS, maxConnections);
     }
 
@@ -290,7 +296,8 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
     }
 
     /**
-     * Terminal operation that closes and destroys all pooled connections and cannot be undone.
+     * Stops the pool closing all currently open connections and blocking attempts to create new
+     * connections until the pool is started again.
      */
     public synchronized void stop() {
         if (isStarted()) {
@@ -342,13 +349,42 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
 
     private void scheduleIdleCheckTaskIfNeeded() {
         if (connectionCheckInterval > 0 && isStarted()) {
-            scheduler = Executors.newScheduledThreadPool(1);
-            scheduler.scheduleWithFixedDelay(() -> {
-                pools.values().forEach(pool -> pool.scheduledConnectionsCheck());
-            }, connectionCheckInterval, connectionCheckInterval, TimeUnit.MILLISECONDS);
+            scheduler = Executors.newScheduledThreadPool(1, new TrackableThreadFactory("JMS Pool Connection check thread", true));
+            scheduler.scheduleWithFixedDelay(
+                this::checkAllConnectionsInAllPools, connectionCheckInterval, connectionCheckInterval, TimeUnit.MILLISECONDS);
         }
     }
 
+    private void checkAllConnectionsInAllPools() {
+        final Collection<JmsKeyedConnectionPool> connectionPools;
+
+        synchronized (this) {
+            if (pools.isEmpty()) {
+                return;
+            }
+
+            // Take a snapshot of the pools as they exist now an run the checks, any
+            // newly added pools during this scan will be captured during the next cycle.
+            connectionPools = new ArrayList<>(pools.values());
+        }
+
+        connectionPools.forEach(pool -> {
+            LOG.trace("Checking connection in pool: {}", pool);
+            try {
+                pool.performConnectionsCheck();
+            } catch (Exception e) {
+                LOG.debug("Caught unexpected exception during check on pool: {}", pool, e);
+            }
+        });
+    }
+
+    /**
+     * Sub-pool containing connections for the assigned key.
+     *
+     * The API of this sub-pool is meant to be called from the synchronized API of the parent
+     * connection pool or via a callback from the pooled connections which must then acquire
+     * the lock of the parent connection pool to operate on this sub-pool safely.
+     */
     private class JmsKeyedConnectionPool implements JmsConnectionProxyManager<CP> {
 
         private final Deque<CP> connections = new ArrayDeque<>();
@@ -357,6 +393,11 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
 
         JmsKeyedConnectionPool(JmsConnectionKey connectionKey) {
             this.connectionKey = connectionKey;
+        }
+
+        @Override
+        public String toString() {
+            return getClass().getSimpleName() + "-" + System.identityHashCode(this);
         }
 
         public void clear() {
@@ -435,7 +476,7 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
             return connection;
         }
 
-        protected void scheduledConnectionsCheck() {
+        protected void performConnectionsCheck() {
             // Start out empty and only grow when an actual failed or idle for to long
             // connection is found. We close out of band to release the lock and let new
             // connections enter the pool from create calls.

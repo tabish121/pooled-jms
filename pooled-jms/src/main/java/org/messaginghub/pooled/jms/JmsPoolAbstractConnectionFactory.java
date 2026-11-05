@@ -35,6 +35,7 @@ import jakarta.jms.JMSException;
 import jakarta.jms.JMSRuntimeException;
 import jakarta.jms.QueueConnection;
 import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.ResourceAllocationException;
 import jakarta.jms.Session;
 import jakarta.jms.TopicConnection;
 import jakarta.jms.TopicConnectionFactory;
@@ -151,8 +152,8 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
      * Stops the pool from providing any new connections and closes all pooled Connections.
      * <p>
      * This method stops services from the JMS Connection Pool closing down any Connections in
-     * the pool regardless of them being loaned out at the time. The pool cannot be restarted
-     * after a call to stop.
+     * the pool regardless of them being loaned out at the time. A stopped pool can be restarted
+     * if new Connections are to be served once again.
      */
     public void stop() {
         try {
@@ -309,7 +310,7 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
 
     /**
      * Controls the behavior of the internal session pool. By default the call to
-     * {@link Connection#createSession()} will block if the session pool is full.  If the
+     * {@link Connection#createSession()} will block if the session pool is full. If the
      * block options is set to false, it will change the default behavior and instead the
      * call to create a {@link Session} will throw a JMSException.
      * <p>
@@ -419,9 +420,9 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
     }
 
     /**
-     * Returns the timeout to use for blocking creating new sessions
+     * Returns the timeout to use for blocking creating new sessions if that option is enabled (default).
      *
-     * @return true if the pooled Connection createSession method will block when the limit is hit.
+     * @return the configured timeout if the pool is configured to block when the session pool is full
      *
      * @see #setBlockIfSessionPoolIsFull(boolean)
      */
@@ -431,23 +432,24 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
 
     /**
      * Controls the behavior of the internal {@link Session} pool. By default the call to
-     * Connection.getSession() will block if the {@link Session} pool is full.  This setting
-     * will affect how long it blocks and throws an exception after the timeout.
+     * Connection.getSession() will block if the {@link Session} pool is full. This setting
+     * will affect how long it blocks before it throws an exception once the timeout is reached.
      * <p>
      * The size of the session pool is controlled by the {@link #setMaxSessionsPerConnection(int)}
-     * value that has been configured.  Whether or not the call to create session blocks is controlled
+     * value that has been configured. Whether or not the call to create session blocks is controlled
      * by the {@link #setBlockIfSessionPoolIsFull(boolean)} property.
      * <p>
-     * By default the timeout defaults to -1 and a blocked call to create a Session will
-     * wait indefinitely for a new {@link Session}. A value of zero for the timeout is equivalent
-     * to having no timeout and the session create call will not block if there are no idle
-     * sessions available.
+     * By default the timeout defaults to -1 and a blocked call to create a Session will wait
+     * indefinitely for a new {@link Session}. A value of zero for the timeout is treated as
+     * though the {@link #isBlockIfSessionPoolIsFull()} was set to false meaning that if there
+     * is no available session an {@link ResourceAllocationException} will be thrown.
      *
      * @param blockIfSessionPoolIsFullTimeout
-     * 		if blockIfSessionPoolIsFullTimeout is true then use this setting
+     * 		if {@link #isBlockIfSessionPoolIsFull()} is true then use this setting
      *      to configure how long to block before an error is thrown.
      *
      * @see #setMaxSessionsPerConnection(int)
+     * @see #setBlockIfSessionPoolIsFull(boolean)
      */
     public void setBlockIfSessionPoolIsFullTimeout(long blockIfSessionPoolIsFullTimeout) {
         getConnectionFactoryProxy().setBlockIfSessionPoolIsFullTimeout(blockIfSessionPoolIsFullTimeout);

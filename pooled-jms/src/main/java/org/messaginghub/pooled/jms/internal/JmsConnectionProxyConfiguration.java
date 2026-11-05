@@ -69,6 +69,10 @@ class JmsConnectionProxyConfiguration {
     }
 
     public void setMaxIdleSessionsPerConnection(int maxIdleSessionsPerConnection) {
+        if (maxIdleSessionsPerConnection < 0) {
+            throw new IllegalArgumentException("Cannot set max idle sessions to a negative value");
+        }
+
         this.maxIdleSessionsPerConnection = maxIdleSessionsPerConnection;
     }
 
@@ -77,6 +81,10 @@ class JmsConnectionProxyConfiguration {
     }
 
     public void setMaxSessionsPerConnection(int maxSessionsPerConnection) {
+        if (maxSessionsPerConnection <= 0) {
+            throw new IllegalArgumentException("Cannot set max sessions per connection to less than one.");
+        }
+
         this.maxSessionsPerConnection = maxSessionsPerConnection;
     }
 
@@ -109,6 +117,10 @@ class JmsConnectionProxyConfiguration {
     }
 
     public void setExplicitProducerCacheSize(int cacheSize) {
+        if (cacheSize < 0) {
+            throw new IllegalArgumentException("Cannot set the explicit producer cache size to a negative value");
+        }
+
         this.explicitProducerCacheSize = cacheSize;
     }
 
@@ -117,6 +129,10 @@ class JmsConnectionProxyConfiguration {
     }
 
     public void setBlockIfSessionPoolIsFullTimeout(long blockIfSessionPoolIsFullTimeout) {
+        if (blockIfSessionPoolIsFullTimeout < -1) {
+            throw new IllegalArgumentException("Legal values are -1 or >= 0 for block on session pool is full timeout");
+        }
+
         this.blockIfSessionPoolIsFullTimeout = blockIfSessionPoolIsFullTimeout;
     }
 

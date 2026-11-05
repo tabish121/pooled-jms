@@ -45,6 +45,9 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
     private final Map<JmsSessionKey, JmsKeyedSessionPool> pools = new HashMap<>();
     private final JmsConnectionProxyConfiguration configuration;
 
+    private final int maxActiveSessions;
+    private final int maxIdleSessions;
+
     private boolean destroyed;
 
     /**
@@ -55,20 +58,23 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
      */
     JmsAbstractSessionPool(JmsConnectionProxyConfiguration configuration) {
         this.configuration = configuration;
+
+        this.maxActiveSessions = configuration.getMaxSessionsPerConnection();
+        this.maxIdleSessions = Math.min(maxActiveSessions, configuration.getMaxIdleSessionsPerConnection());
     }
 
     /**
      * {@return the max number of sessions the session pool will allocate}
      */
     public int getMaxSessions() {
-        return configuration.getMaxSessionsPerConnection();
+        return maxActiveSessions;
     }
 
     /**
      * {@return the max number of idle sessions the session pool will allow before closing older idle sessions}
      */
     public int getMaxIdleSessions() {
-        return configuration.getMaxIdleSessionsPerConnection();
+        return maxIdleSessions;
     }
 
     /**
@@ -275,17 +281,27 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
 
             while (!destroyed) {
                 if (activeSessions.size() == getMaxSessions()) {
-                    if (isBlockIfLimitReached() && timeout != 0) {
+                    if (configuration.isBlockIfSessionPoolIsFull() && timeout != 0) {
                         try {
                             if (timeout > 0) {
-                                JmsAbstractSessionPool.this.wait(getBlockIfLimitReachedTimeout());
+                                JmsAbstractSessionPool.this.wait(timeout);
                             } else {
                                 JmsAbstractSessionPool.this.wait();
                             }
                         } catch (InterruptedException e) {
-                            continue;
+                            // Choosing to throw resource allocation error here as clients are more likely
+                            // to handle this gracefully than other types which are less clear about the
+                            // outcome from a JMS perspective. Set the interrupted state so that an outside
+                            // observer can witness the state.
+                            Thread.currentThread().interrupt();
+
+                            throw new ResourceAllocationException(
+                                "JMS Pool has reached the max number of pooled sessions for this connection and " +
+                               "was interrupted while waiting for one to become available.");
                         } finally {
-                            timeout = Math.max(deadline - System.currentTimeMillis(), 0);
+                            if (timeout >= 0) {
+                                timeout = Math.max(deadline - System.currentTimeMillis(), 0);
+                            }
 
                             checkedIsDestroyed();
                         }
@@ -333,9 +349,10 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
                 // returned and also check that the idle sessions queue isn't full.
                 // If either of those cases occurs we just destroy the session and
                 // remove it from the closed sessions pool.
-                activeSessions.remove(session);
+                final boolean wasActive = activeSessions.remove(session);
 
-                if (destroyed || !session.validateSession() || idleSessions.size() == getMaxIdleSessions()) {
+                if (destroyed || !session.validateSession() || idleSessions.size() == getMaxIdleSessions() || !wasActive) {
+                    idleSessions.remove(session);
                     closeSession = true;
                 } else {
                     idleSessions.offer(session);
