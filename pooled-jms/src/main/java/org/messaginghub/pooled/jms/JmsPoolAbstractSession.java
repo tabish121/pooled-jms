@@ -121,12 +121,6 @@ public abstract class JmsPoolAbstractSession implements Session, TopicSession, Q
     private boolean cleanupSession() {
         final AtomicReference<Exception> cleanupError = new AtomicReference<>();
 
-        try {
-            session.setMessageListener(null);
-        } catch (JMSException e) {
-            cleanupError.compareAndSet(null, e);
-        }
-
         resources.keySet().forEach(resource -> {
             try {
                 resource.close();
@@ -135,6 +129,12 @@ public abstract class JmsPoolAbstractSession implements Session, TopicSession, Q
                 cleanupError.compareAndSet(null, e);
             }
         });
+
+        try {
+            session.setMessageListener(null);
+        } catch (JMSException e) {
+            cleanupError.compareAndSet(null, e);
+        }
 
         if (isRollbackOnClose()) {
             try {
