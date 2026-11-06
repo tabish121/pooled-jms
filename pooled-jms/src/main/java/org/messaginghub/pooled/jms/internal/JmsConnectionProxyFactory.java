@@ -58,8 +58,14 @@ public final class JmsConnectionProxyFactory extends JmsAbstractConnectionProxyF
 
         @Override
         protected JmsConnectionProxy createConnectionProxy(String username, String password,
-                                                               JmsConnectionProxyManager<JmsConnectionProxy> manager) throws JMSException {
-            final Connection connection = getConnectionFactory().createConnection(username, password);
+                                                           JmsConnectionProxyManager<JmsConnectionProxy> manager) throws JMSException {
+            final Connection connection;
+
+            if (username == null && password == null) {
+                connection = getConnectionFactory().createConnection();
+            } else {
+                connection = getConnectionFactory().createConnection(username, password);
+            }
 
             return new JmsConnectionProxy(getConfiguration().snapshot(), connection, manager);
         }

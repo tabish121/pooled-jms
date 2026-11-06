@@ -792,6 +792,26 @@ public class JmsPoolJMSContextTest extends JmsPoolTestSupport {
         context.close(); // Second close should not invalidate state
 
         try {
+            context.setAutoStart(false);
+            fail("Should not be able to change settings when context is closed");
+        } catch (IllegalStateRuntimeException isre) {}
+
+        try {
+            context.getTransacted();
+            fail("Should not be able to read settings when context is closed");
+        } catch (IllegalStateRuntimeException isre) {}
+
+        try {
+            context.getAutoStart();
+            fail("Should not be able to read settings when context is closed");
+        } catch (IllegalStateRuntimeException isre) {}
+
+        try {
+            context.getSessionMode();
+            fail("Should not be able to read settings when context is closed");
+        } catch (IllegalStateRuntimeException isre) {}
+
+        try {
             context.createContext(Session.AUTO_ACKNOWLEDGE);
             fail("Should not be able to create resource when context is closed");
         } catch (IllegalStateRuntimeException isre) {}

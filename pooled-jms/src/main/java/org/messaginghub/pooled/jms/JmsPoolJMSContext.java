@@ -433,11 +433,13 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public boolean getAutoStart() {
+        checkClosed();
         return autoStart;
     }
 
     @Override
     public void setAutoStart(boolean autoStart) {
+        checkClosed();
         this.autoStart = autoStart;
     }
 
@@ -496,11 +498,15 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public int getSessionMode() {
+        checkClosed();
+
         return sessionMode;
     }
 
     @Override
     public boolean getTransacted() {
+        checkClosed();
+
         return sessionMode == JMSContext.SESSION_TRANSACTED;
     }
 

@@ -16,12 +16,15 @@
  */
 package org.messaginghub.pooled.jms;
 
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.transaction.xa.XAResource;
 
 import org.messaginghub.pooled.jms.internal.JmsXAConnectionProxy;
 import org.messaginghub.pooled.jms.internal.JmsXASessionProxy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import jakarta.jms.JMSException;
 import jakarta.jms.QueueSession;
@@ -43,6 +46,8 @@ import jakarta.transaction.TransactionManager;
  * {@link XAConnection} pooled connection wrapper for shared connections from the pool.
  */
 public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XAConnection, XATopicConnection, XAQueueConnection, AutoCloseable {
+
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final TransactionManager transactionManager;
 
@@ -197,6 +202,8 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
                 // Force the session to close and invalidate itself.
                 try {
                     session.internalClose(true);
+                } catch (JMSException ex) {
+                    LOG.debug("Suppressed error on close of the wrapped session proxy", ex);
                 } finally {
                     session = null;
                     connection.close(); // Release the synchronizations reference on the connection
@@ -213,6 +220,8 @@ public class JmsPoolXAConnection extends JmsPoolAbstractConnection implements XA
             if (closed.compareAndSet(false, true)) {
                 try {
                     session.internalClose(false);
+                } catch (JMSException ex) {
+                    LOG.debug("Suppressed error on close of the wrapped session proxy", ex);
                 } finally {
                     session = null;
                     connection.close(); // Release the synchronizations reference on the connection

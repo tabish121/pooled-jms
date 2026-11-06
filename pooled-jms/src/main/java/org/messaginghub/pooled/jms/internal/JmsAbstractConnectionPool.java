@@ -48,7 +48,15 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private record JmsConnectionKey(String username, String password) {}
+    private record JmsConnectionKey(String username, String password) {
+
+        @Override
+        public String toString() {
+            return getClass().getSimpleName() +
+                   " { username = " + username +
+                   ", password = " + (password == null ? password : System.identityHashCode(password)) + "}";
+        }
+    }
 
     private final Map<JmsConnectionKey, JmsKeyedConnectionPool> pools = new HashMap<>();
 
