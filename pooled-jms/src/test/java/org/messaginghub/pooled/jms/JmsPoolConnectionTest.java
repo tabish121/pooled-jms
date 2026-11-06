@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -304,7 +305,7 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
     }
 
     /**
-     * Tests the behavior of the sessionPool of the PooledConnectionFactory when
+     * Tests the behavior of the sessionPool of the pooled connection factory when
      * maximum number of sessions are reached.
      *
      * @throws Exception
@@ -373,6 +374,9 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
                          "to raise an JMSException as internal session pool" +
                          "is exhausted. This did not happen and indicates a problem");
                     return Boolean.FALSE;
+                } catch (ResourceAllocationException jmsRAEx) {
+                    // expected, ignore but log
+                    TASK_LOG.info("Caught expected " + jmsRAEx);
                 } catch (JMSException ex) {
                     if (ex.getCause().getClass() == ResourceAllocationException.class) {
                         // expected, ignore but log
@@ -638,5 +642,23 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
 
         assertTrue(signal1.await(5, TimeUnit.SECONDS));
         assertTrue(signal2.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    public void testResourceAllocationThrownIfSessionPoolExhuasted() throws Exception {
+        cf.setMaxSessionsPerConnection(2);
+        cf.setBlockIfSessionPoolIsFull(false);
+
+        final Connection connection = cf.createConnection();
+
+        final Session session1 = connection.createSession();
+        final Session session2 = connection.createSession();
+
+        assertNotNull(session1);
+        assertNotNull(session2);
+
+        assertNotSame(session1, session2);
+
+        assertThrows(ResourceAllocationException.class, () -> connection.createSession());
     }
 }

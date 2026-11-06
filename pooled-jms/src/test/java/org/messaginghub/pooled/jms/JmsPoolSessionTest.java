@@ -51,6 +51,7 @@ import jakarta.jms.MessageListener;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.Queue;
 import jakarta.jms.QueueSession;
+import jakarta.jms.ResourceAllocationException;
 import jakarta.jms.Session;
 import jakarta.jms.TemporaryQueue;
 import jakarta.jms.TemporaryTopic;
@@ -268,7 +269,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         try {
             connection.createSession();
             fail("Should not be able to create new session");
-        } catch (IllegalStateException ise) {}
+        } catch (ResourceAllocationException ise) {}
 
         // Nothing should have changed as we didn't create anything.
         assertEquals(1, connection.getNumActiveSessions());
@@ -391,7 +392,7 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         assertEquals(NUM_SESSIONS, connection.getNumActiveSessions());
 
-        assertThrows(IllegalStateException.class, () -> connection.createSession(false, Session.AUTO_ACKNOWLEDGE));
+        assertThrows(ResourceAllocationException.class, () -> connection.createSession(false, Session.AUTO_ACKNOWLEDGE));
 
         assertEquals(NUM_SESSIONS, connection.getNumActiveSessions());
 

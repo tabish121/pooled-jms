@@ -211,6 +211,8 @@ public abstract class JmsAbstractConnectionProxy<CP extends JmsAbstractConnectio
 
         try {
             session = sessionPool.nextSession(transacted, acknowledgeMode);
+        } catch (JMSException jmsEx) {
+            throw jmsEx;
         } catch (Exception e) {
             IllegalStateException illegalStateException = new IllegalStateException(e.toString());
             illegalStateException.initCause(e);

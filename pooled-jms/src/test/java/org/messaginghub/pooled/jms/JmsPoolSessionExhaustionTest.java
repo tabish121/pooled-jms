@@ -33,8 +33,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import jakarta.jms.Connection;
-import jakarta.jms.IllegalStateException;
 import jakarta.jms.JMSException;
+import jakarta.jms.ResourceAllocationException;
 import jakarta.jms.Session;
 
 @Timeout(60)
@@ -83,7 +83,7 @@ public class JmsPoolSessionExhaustionTest extends JmsPoolTestSupport {
         try {
             connection2.createSession();
             fail("Should not be able to create a second Session Connection 2");
-        } catch (IllegalStateException ex) {
+        } catch (ResourceAllocationException ex) {
             if (timeout) {
                 assertTrue((System.currentTimeMillis() - startTime) > 30);
             }
@@ -96,7 +96,7 @@ public class JmsPoolSessionExhaustionTest extends JmsPoolTestSupport {
         try {
             connection1.createSession();
             fail("Should not be able to create a second Session on Connection 1");
-        } catch (IllegalStateException ex) {
+        } catch (ResourceAllocationException ex) {
             if (timeout) {
                 assertTrue((System.currentTimeMillis() - startTime) > 30);
             }
@@ -150,7 +150,7 @@ public class JmsPoolSessionExhaustionTest extends JmsPoolTestSupport {
         try {
             connection1.createSession();
             fail("Should not be able to create a second Session on Connection 1");
-        } catch (IllegalStateException ex) {
+        } catch (ResourceAllocationException ex) {
             if (timeout) {
                 assertTrue((System.currentTimeMillis() - startTime) > 30);
             }
@@ -161,7 +161,7 @@ public class JmsPoolSessionExhaustionTest extends JmsPoolTestSupport {
         try {
             connection2.createSession();
             fail("Should not be able to create a second Session Connection 2");
-        } catch (IllegalStateException ex) {
+        } catch (ResourceAllocationException ex) {
             if (timeout) {
                 assertTrue((System.currentTimeMillis() - startTime) > 30);
             }
