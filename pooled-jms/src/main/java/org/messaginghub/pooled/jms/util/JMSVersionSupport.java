@@ -138,7 +138,7 @@ public final class JMSVersionSupport {
      * @return true if the Connection supports the version range given.
      */
     public boolean isJMSVersionSupported(int requiredMajor, int requiredMinor) {
-        return jmsMajorVersion >= requiredMajor && jmsMinorVersion >= requiredMinor;
+        return jmsMajorVersion > requiredMajor || (jmsMajorVersion == requiredMajor && jmsMinorVersion >= requiredMinor);
     }
 
     /**
@@ -170,7 +170,7 @@ public final class JMSVersionSupport {
      * @throws JMSException if the version supported by the connection does not match or exceed the requested version.
      */
     public void checkClientJMSVersionSupport(int requiredMajor, int requiredMinor, boolean runtimeEx) throws JMSException {
-        if (jmsMajorVersion >= requiredMajor && jmsMinorVersion >= requiredMinor) {
+        if (isJMSVersionSupported(requiredMajor, requiredMinor)) {
             return;
         }
 
