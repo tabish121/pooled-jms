@@ -399,6 +399,10 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
     }
 
     boolean validateSession() {
+        // The best we can do is check for closed JMS session as there is no viable means
+        // of detecting failed underlying connections in JMS so this at least can capture
+        // the case that the provider marks resources as closed if the underlying connection
+        // enters a failed state.
         try {
             session.getTransacted();
         } catch (IllegalStateException jmsISE) {

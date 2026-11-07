@@ -103,6 +103,20 @@ public class JmsPoolJMSConsumer implements JMSConsumer, AutoCloseable {
         }
     }
 
+    /**
+     * NOTE: Regarding the receive body methods below
+     *
+     * These methods cannot be implemented in a specification compliant manner due to the constraints
+     * of how a message must be put back into the delivery queue if the requested body conversion
+     * is not applicable to the message type at the head of the queue. JMS does not provide a means
+     * of returning the message. There is the possibility that for a CLIENT_ACKNOWLEDGE session we
+     * could call recover but that in itself might make this confusing to the user as to when they
+     * can and can't use this API. Users should opt for the provider context when they want to use
+     * this feature.
+     *
+     * This limitation should be added to an overall JMS pool limitations document.
+     */
+
     @Override
     public <T> T receiveBody(Class<T> desired) {
         throw new JMSRuntimeException("Pooled JMSConsumer does not support receiveBody");

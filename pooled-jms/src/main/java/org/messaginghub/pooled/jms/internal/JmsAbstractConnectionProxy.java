@@ -414,7 +414,9 @@ public abstract class JmsAbstractConnectionProxy<CP extends JmsAbstractConnectio
             usable = false;
         } else {
             // Sanity check the Connection and if it throws IllegalStateException we assume
-            // that it is closed or has failed due to some IO error.
+            // that it is closed or has failed due to some IO error. This won't always capture a
+            // failed connection but in JMS so this at least can capture the case that the provider
+            // marks resources as closed if the underlying connection enters a failed state.
             try {
                 connection.getExceptionListener();
             } catch (IllegalStateException jmsISE) {

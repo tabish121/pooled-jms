@@ -111,7 +111,8 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
     public void stop() throws JMSException {
         // Pooled connections cannot be stopped as they can be shared amongst multiple
         // callers that would not be expecting the connection to be stopped without
-        // their knowledge.
+        // their knowledge. This is something worth noting in a document describing
+        // how the pooled version of JMS resources differs from non-pooled versions.
         checkClosed();
     }
 
