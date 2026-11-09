@@ -27,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
@@ -46,9 +47,11 @@ import org.junit.jupiter.api.Timeout;
 import org.messaginghub.pooled.jms.mock.MockJMSConnection;
 import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
 import org.messaginghub.pooled.jms.mock.MockJMSMessageProducer;
+import org.messaginghub.pooled.jms.mock.MockJMSObjectMessage;
 import org.messaginghub.pooled.jms.mock.MockJMSSession;
 import org.messaginghub.pooled.jms.mock.MockJMSTopic;
 
+import jakarta.jms.BytesMessage;
 import jakarta.jms.CompletionListener;
 import jakarta.jms.DeliveryMode;
 import jakarta.jms.Destination;
@@ -58,8 +61,10 @@ import jakarta.jms.JMSContext;
 import jakarta.jms.JMSException;
 import jakarta.jms.JMSProducer;
 import jakarta.jms.JMSRuntimeException;
+import jakarta.jms.MapMessage;
 import jakarta.jms.Message;
 import jakarta.jms.MessageFormatRuntimeException;
+import jakarta.jms.ObjectMessage;
 import jakarta.jms.Queue;
 import jakarta.jms.TextMessage;
 
@@ -981,6 +986,90 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
         } catch (MessageFormatRuntimeException mfre) {
         } catch (Exception e) {
             fail("Should throw a MessageFormatRuntimeException");
+        }
+    }
+
+    @Test
+    public void testSendNullByteArrayDoesNotThrow() throws JMSException {
+        JMSProducer producer = context.createProducer();
+
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
+        connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
+
+            @Override
+            public void onMessageSend(MockJMSSession session, MockJMSMessageProducer producer, Message message) throws JMSException {
+                assertTrue(message instanceof BytesMessage);
+            }
+        });
+
+        try {
+            producer.send(JMS_DESTINATION, (byte[]) null);
+        } catch (Exception e) {
+            fail("Should not throw a an exception when byte array is null");
+        }
+    }
+
+    @Test
+    public void testSendNullMapDoesNotThrow() throws JMSException {
+        JMSProducer producer = context.createProducer();
+
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
+        connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
+
+            @Override
+            public void onMessageSend(MockJMSSession session, MockJMSMessageProducer producer, Message message) throws JMSException {
+                assertTrue(message instanceof MapMessage);
+            }
+        });
+
+        try {
+            producer.send(JMS_DESTINATION, (Map<String, Object>) null);
+        } catch (Exception e) {
+            fail("Should not throw a an exception when Map is null");
+        }
+    }
+
+    @Test
+    public void testSendNullSerializableDoesNotThrow() throws JMSException {
+        JMSProducer producer = context.createProducer();
+
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
+        connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
+
+            @Override
+            public void onMessageSend(MockJMSSession session, MockJMSMessageProducer producer, Message message) throws JMSException {
+                assertTrue(message instanceof ObjectMessage);
+
+                final MockJMSObjectMessage mockMessage = (MockJMSObjectMessage) message;
+
+                assertNull(mockMessage.getObject());
+            }
+        });
+
+        try {
+            producer.send(JMS_DESTINATION, (Serializable) null);
+        } catch (Exception e) {
+            fail("Should not throw a an exception when serializable is null");
+        }
+    }
+
+    @Test
+    public void testSendNullTextDoesNotThrow() throws JMSException {
+        JMSProducer producer = context.createProducer();
+
+        MockJMSConnection connection = (MockJMSConnection) context.getProviderConnection();
+        connection.addConnectionListener(new MockJMSDefaultConnectionListener() {
+
+            @Override
+            public void onMessageSend(MockJMSSession session, MockJMSMessageProducer producer, Message message) throws JMSException {
+                assertTrue(message instanceof TextMessage);
+            }
+        });
+
+        try {
+            producer.send(JMS_DESTINATION, (String) null);
+        } catch (Exception e) {
+            fail("Should not throw a an exception when serializable is null");
         }
     }
 

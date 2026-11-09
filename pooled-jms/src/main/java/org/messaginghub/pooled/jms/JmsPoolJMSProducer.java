@@ -105,7 +105,11 @@ public class JmsPoolJMSProducer implements JMSProducer {
     public JMSProducer send(Destination destination, byte[] body) {
         try {
             final BytesMessage message = session.createBytesMessage();
-            message.writeBytes(body);
+
+            if (body != null) {
+                message.writeBytes(body);
+            }
+
             doSend(destination, message);
         } catch (JMSException jmse) {
             throw JMSExceptionSupport.createRuntimeException(jmse);
@@ -118,8 +122,11 @@ public class JmsPoolJMSProducer implements JMSProducer {
     public JMSProducer send(Destination destination, Map<String, Object> body) {
         try {
             final MapMessage message = session.createMapMessage();
-            for (Map.Entry<String, Object> entry : body.entrySet()) {
-                message.setObject(entry.getKey(), entry.getValue());
+
+            if (body != null) {
+                for (Map.Entry<String, Object> entry : body.entrySet()) {
+                    message.setObject(entry.getKey(), entry.getValue());
+                }
             }
 
             doSend(destination, message);
@@ -134,7 +141,11 @@ public class JmsPoolJMSProducer implements JMSProducer {
     public JMSProducer send(Destination destination, Serializable body) {
         try {
             final ObjectMessage message = session.createObjectMessage();
-            message.setObject(body);
+
+            if (body != null) {
+                message.setObject(body);
+            }
+
             doSend(destination, message);
         } catch (JMSException jmse) {
             throw JMSExceptionSupport.createRuntimeException(jmse);
@@ -146,7 +157,12 @@ public class JmsPoolJMSProducer implements JMSProducer {
     @Override
     public JMSProducer send(Destination destination, String body) {
         try {
-            final TextMessage message = session.createTextMessage(body);
+            final TextMessage message = session.createTextMessage();
+
+            if (body != null) {
+                message.setText(body);
+            }
+
             doSend(destination, message);
         } catch (JMSException jmse) {
             throw JMSExceptionSupport.createRuntimeException(jmse);
