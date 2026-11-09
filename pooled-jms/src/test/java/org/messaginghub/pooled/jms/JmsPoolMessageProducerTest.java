@@ -22,10 +22,16 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.messaginghub.pooled.jms.mock.MockJMSDefaultSessionListener;
 import org.messaginghub.pooled.jms.mock.MockJMSDestination;
+import org.messaginghub.pooled.jms.mock.MockJMSMessageProducer;
 import org.messaginghub.pooled.jms.mock.MockJMSQueue;
+import org.messaginghub.pooled.jms.mock.MockJMSSession;
 import org.messaginghub.pooled.jms.mock.MockJMSTopic;
 
 import jakarta.jms.CompletionListener;
@@ -40,6 +46,7 @@ import jakarta.jms.Queue;
 import jakarta.jms.QueueSender;
 import jakarta.jms.QueueSession;
 import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import jakarta.jms.Topic;
 import jakarta.jms.TopicPublisher;
 import jakarta.jms.TopicSession;
@@ -544,6 +551,74 @@ public class JmsPoolMessageProducerTest extends JmsPoolTestSupport {
         } catch (IllegalArgumentException iae) {
             // expected
         }
+    }
+
+    @Test
+    public void testDisableMessageIDForwardedToProviderProducer() throws JMSException {
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
+        JmsPoolSession session = (JmsPoolSession) connection.createSession();
+        MockJMSSession mockSession = (MockJMSSession) session.getProviderSession();
+        Queue queue = session.createTemporaryQueue();
+        JmsPoolMessageProducer producer = (JmsPoolMessageProducer) session.createProducer(queue);
+        TextMessage message = session.createTextMessage();
+
+        List<Boolean> disabledMessageIDs = new ArrayList<>();
+
+        mockSession.addSessionListener(new MockJMSDefaultSessionListener() {
+
+            @Override
+            public void onProducerSend(MockJMSSession session, MockJMSMessageProducer producer, Destination destination, Message message,
+                                       int deliveryMode, int priority, long timeToLive, boolean disableMessageId,
+                                       boolean disableTimestamp, long deliveryDelay, CompletionListener completionListener) throws JMSException {
+                disabledMessageIDs.add(disableMessageId);
+            }
+        });
+
+        producer.send(message);
+        producer.setDisableMessageID(true);
+        producer.send(message);
+        producer.setDisableMessageID(false);
+        producer.send(message);
+
+        assertEquals(3, disabledMessageIDs.size());
+
+        assertFalse(disabledMessageIDs.get(0));
+        assertTrue(disabledMessageIDs.get(1));
+        assertFalse(disabledMessageIDs.get(2));
+    }
+
+    @Test
+    public void testDisableTimestampForwardedToProviderProducer() throws JMSException {
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
+        JmsPoolSession session = (JmsPoolSession) connection.createSession();
+        MockJMSSession mockSession = (MockJMSSession) session.getProviderSession();
+        Queue queue = session.createTemporaryQueue();
+        JmsPoolMessageProducer producer = (JmsPoolMessageProducer) session.createProducer(queue);
+        TextMessage message = session.createTextMessage();
+
+        List<Boolean> disableTimestamps = new ArrayList<>();
+
+        mockSession.addSessionListener(new MockJMSDefaultSessionListener() {
+
+            @Override
+            public void onProducerSend(MockJMSSession session, MockJMSMessageProducer producer, Destination destination, Message message,
+                                       int deliveryMode, int priority, long timeToLive, boolean disableMessageId,
+                                       boolean disableTimestamp, long deliveryDelay, CompletionListener completionListener) throws JMSException {
+                disableTimestamps.add(disableTimestamp);
+            }
+        });
+
+        producer.send(message);
+        producer.setDisableMessageTimestamp(true);
+        producer.send(message);
+        producer.setDisableMessageTimestamp(false);
+        producer.send(message);
+
+        assertEquals(3, disableTimestamps.size());
+
+        assertFalse(disableTimestamps.get(0));
+        assertTrue(disableTimestamps.get(1));
+        assertFalse(disableTimestamps.get(2));
     }
 
     //----- Test Support -----------------------------------------------------//

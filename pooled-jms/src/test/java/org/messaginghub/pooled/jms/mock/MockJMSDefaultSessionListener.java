@@ -16,7 +16,10 @@
  */
 package org.messaginghub.pooled.jms.mock;
 
+import jakarta.jms.CompletionListener;
+import jakarta.jms.Destination;
 import jakarta.jms.JMSException;
+import jakarta.jms.Message;
 
 public class MockJMSDefaultSessionListener implements MockJMSSessionListener {
 
@@ -37,5 +40,10 @@ public class MockJMSDefaultSessionListener implements MockJMSSessionListener {
 
     @Override
     public void onProducerGetDeliveryDelay(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {}
+
+    @Override
+    public void onProducerSend(MockJMSSession session, MockJMSMessageProducer producer, Destination destination, Message message,
+                               int deliveryMode, int priority, long timeToLive, boolean disableMessageId,
+                               boolean disableTimestamp, long deliveryDelay, CompletionListener completionListener) throws JMSException {}
 
 }

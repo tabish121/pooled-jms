@@ -168,25 +168,35 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
         // changes to match what's been configured here.
         synchronized (messageProducer) {
             long oldDelayValue = 0;
+            boolean oldDisableMessageId = false;
+            boolean oldDisableTimestamp = false;
 
-            if (deliveryDelay != 0 && messageProducer.isDelayedDeliverySupported()) {
-                oldDelayValue = messageProducer.getDeliveryDelay();
-                try {
+            try {
+                if (deliveryDelay != 0 && messageProducer.isDelayedDeliverySupported()) {
+                    oldDelayValue = messageProducer.getDeliveryDelay();
                     messageProducer.setDeliveryDelay(deliveryDelay);
-                } catch (IllegalStateException jmsISE) {
-                    // The JMS MessageProducer that backs this wrapper has indicated that it is
-                    // likely closed either individually or by the full connection having gone
-                    // away.  We will force close it in case only the producer was closed so that
-                    // future uses of the producer will result in a new one being opened if the
-                    // connection is still live.
-                    try {
-                        doClose(true);
-                    } catch (Exception ex) {
-                        // Ignore and throw original failure cause
-                    }
-
-                    throw jmsISE;
                 }
+                if (disableMessageID) {
+                    oldDisableMessageId = messageProducer.getDisableMessageID();
+                    messageProducer.setDisableMessageID(disableMessageID);
+                }
+                if (disableMessageTimestamp) {
+                    oldDisableTimestamp = messageProducer.getDisableMessageTimestamp();
+                    messageProducer.setDisableMessageTimestamp(disableMessageTimestamp);
+                }
+            } catch (IllegalStateException jmsISE) {
+                // The JMS MessageProducer that backs this wrapper has indicated that it is
+                // likely closed either individually or by the full connection having gone
+                // away.  We will force close it in case only the producer was closed so that
+                // future uses of the producer will result in a new one being opened if the
+                // connection is still live.
+                try {
+                    doClose(true);
+                } catch (Exception ex) {
+                    // Ignore and throw original failure cause
+                }
+
+                throw jmsISE;
             }
 
             // For the non-shared MessageProducer that is also not an anonymous producer we
@@ -223,9 +233,17 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
 
                 throw jmsISE;
             } finally {
-                if (!isClosed() && deliveryDelay != 0 && messageProducer.isDelayedDeliverySupported()) {
+                if (!isClosed()) {
                     try {
-                        messageProducer.setDeliveryDelay(oldDelayValue);
+                        if (deliveryDelay != 0 && messageProducer.isDelayedDeliverySupported()) {
+                            messageProducer.setDeliveryDelay(oldDelayValue);
+                        }
+                        if (disableMessageID) {
+                            messageProducer.setDisableMessageID(oldDisableMessageId);
+                        }
+                        if (disableMessageTimestamp) {
+                            messageProducer.setDisableMessageTimestamp(oldDisableTimestamp);
+                        }
                     } catch (IllegalStateException jmsISE) {
                         try {
                             doClose(true);

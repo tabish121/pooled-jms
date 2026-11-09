@@ -415,6 +415,9 @@ public class MockJMSSession implements Session, QueueSession, TopicSession, Auto
     void send(MockJMSMessageProducer producer, Destination destination, Message message, int deliveryMode, int priority, long timeToLive, boolean disableMessageId, boolean disableTimestamp, long deliveryDelay, CompletionListener completionListener) throws JMSException {
         sendLock.lock();
         try {
+            signalMessageProducerSend(producer, destination, message, deliveryMode, priority, timeToLive,
+                                      disableMessageId, disableTimestamp, deliveryDelay, completionListener);
+
             message.setJMSDeliveryMode(deliveryMode);
             message.setJMSPriority(priority);
             message.setJMSRedelivered(false);
@@ -553,6 +556,17 @@ public class MockJMSSession implements Session, QueueSession, TopicSession, Auto
 
         for (MockJMSSessionListener listener : sessionListeners) {
             listener.onProducerGetDeliveryDelay(this, producer);
+        }
+    }
+
+    protected void signalMessageProducerSend(MockJMSMessageProducer producer, Destination destination, Message message,
+                                             int deliveryMode, int priority, long timeToLive, boolean disableMessageId,
+                                             boolean disableTimestamp, long deliveryDelay, CompletionListener completionListener) throws JMSException {
+        connection.onMessageProducerGetDeliveryDelay(this, producer);
+
+        for (MockJMSSessionListener listener : sessionListeners) {
+            listener.onProducerSend(this, producer, destination, message, deliveryMode, priority, timeToLive,
+                                    disableMessageId, disableTimestamp, deliveryDelay, completionListener);
         }
     }
 }
