@@ -494,6 +494,8 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
 
     @Override
     public ConnectionMetaData getMetaData() {
+        checkClosed();
+
         try {
             return connection.getMetaData();
         } catch (JMSException jmse) {

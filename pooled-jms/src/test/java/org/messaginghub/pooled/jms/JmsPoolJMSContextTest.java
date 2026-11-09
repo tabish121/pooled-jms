@@ -16,6 +16,7 @@
  */
 package org.messaginghub.pooled.jms;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -110,6 +111,30 @@ public class JmsPoolJMSContextTest extends JmsPoolTestSupport {
         try {
             context.getMetaData();
             fail("Should not be able to get MetaData from closed.");
+        } catch (JMSRuntimeException jmsre) {}
+    }
+
+    @Test
+    public void testGetMetaDataFromShared() {
+        JMSContext context = cf.createContext();
+        assertNotNull(context.getMetaData());
+
+        JMSContext shared = context.createContext(Session.AUTO_ACKNOWLEDGE);
+
+        context.close();
+
+        try {
+            context.getMetaData();
+            fail("Should not be able to get MetaData from closed.");
+        } catch (JMSRuntimeException jmsre) {}
+
+        assertDoesNotThrow(() -> shared.getMetaData());
+
+        shared.close();
+
+        try {
+            shared.getMetaData();
+            fail("Should not be able to get MetaData from closed previously shared context.");
         } catch (JMSRuntimeException jmsre) {}
     }
 
