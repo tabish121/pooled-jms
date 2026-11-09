@@ -21,6 +21,7 @@ import static org.messaginghub.pooled.jms.util.JMSMessagePropertySupport.checkVa
 import static org.messaginghub.pooled.jms.util.JMSMessagePropertySupport.convertPropertyTo;
 
 import java.io.Serializable;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -343,7 +344,12 @@ public class JmsPoolJMSProducer implements JMSProducer {
 
     @Override
     public JMSProducer setJMSCorrelationIDAsBytes(byte[] correlationIdBytes) {
-        this.correlationIdBytes = correlationIdBytes;
+        if (correlationIdBytes != null) {
+            this.correlationIdBytes = Arrays.copyOf(correlationIdBytes, correlationIdBytes.length);
+        } else {
+            this.correlationIdBytes = null;
+        }
+
         return this;
     }
 

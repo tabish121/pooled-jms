@@ -16,9 +16,12 @@
  */
 package org.messaginghub.pooled.jms;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -242,6 +245,29 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
 
         producer.setJMSCorrelationIDAsBytes(JMS_CORRELATION_ID.getBytes(StandardCharsets.UTF_8));
         assertEquals(JMS_CORRELATION_ID, new String(producer.getJMSCorrelationIDAsBytes(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    public void testJMSCorrelationIDBytesCopiesGivenValue() {
+        JMSProducer producer = context.createProducer();
+
+        final byte[] correlationIDBytes = new byte[10];
+
+        for (int i = 0; i < correlationIDBytes.length; ++i) {
+            correlationIDBytes[i] = (byte) i;
+        }
+
+        producer.setJMSCorrelationIDAsBytes(correlationIDBytes);
+        assertArrayEquals(correlationIDBytes, producer.getJMSCorrelationIDAsBytes());
+        assertNotSame(correlationIDBytes, producer.getJMSCorrelationIDAsBytes());
+
+        correlationIDBytes[0] = 127;
+
+        assertNotEquals(correlationIDBytes[0], producer.getJMSCorrelationIDAsBytes()[0]);
+
+        producer.setJMSCorrelationIDAsBytes(null);
+
+        assertNull(producer.getJMSCorrelationIDAsBytes());
     }
 
     @Test
