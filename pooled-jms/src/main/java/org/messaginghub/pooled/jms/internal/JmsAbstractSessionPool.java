@@ -40,6 +40,12 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
 
     private record JmsSessionKey(boolean transacted, int acknowledgementMode) {}
 
+    /**
+     * Allocation of arrays will generally fail as OOM beyond this point so we cap it as an
+     * attempt at a safe upper bound to sanity check user configured bounds.
+     */
+    private static final int SAFE_MAX_SESSION_UPPER_BOUND = Integer.MAX_VALUE - 8;
+
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final Map<JmsSessionKey, JmsKeyedSessionPool> pools = new HashMap<>();
@@ -59,7 +65,12 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
     JmsAbstractSessionPool(JmsConnectionProxyConfiguration configuration) {
         this.configuration = configuration;
 
-        this.maxActiveSessions = configuration.getMaxSessionsPerConnection();
+        if (configuration.getMaxSessionsPerConnection() < 0) {
+            this.maxActiveSessions = SAFE_MAX_SESSION_UPPER_BOUND;
+        } else {
+            this.maxActiveSessions = Math.min(configuration.getMaxSessionsPerConnection(), SAFE_MAX_SESSION_UPPER_BOUND);
+        }
+
         this.maxIdleSessions = Math.min(maxActiveSessions, configuration.getMaxIdleSessionsPerConnection());
     }
 
@@ -75,20 +86,6 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
      */
     public int getMaxIdleSessions() {
         return maxIdleSessions;
-    }
-
-    /**
-     * {@return if the pool will block if no idle sessions exist and the active sessions is at the limit}
-     */
-    public boolean isBlockIfLimitReached() {
-        return configuration.isBlockIfSessionPoolIsFull();
-    }
-
-    /**
-     * {@return the time in milliseconds to wait if block on session limit reached}
-     */
-    public long getBlockIfLimitReachedTimeout() {
-        return configuration.getBlockIfSessionPoolIsFullTimeout();
     }
 
     @Override
@@ -231,8 +228,8 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
 
         JmsKeyedSessionPool(JmsSessionKey sessionKey) {
             this.sessionKey = sessionKey;
-            this.activeSessions = new ArrayDeque<SP>(getMaxSessions());
-            this.idleSessions = new ArrayDeque<SP>(getMaxIdleSessions());
+            this.activeSessions = new ArrayDeque<SP>();
+            this.idleSessions = new ArrayDeque<SP>();
         }
 
         public int getNumSessions() {
@@ -272,45 +269,54 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
         }
 
         public SP nextIdle() throws JMSException {
-            long timeout = getBlockIfLimitReachedTimeout();
-            long deadline = 0;
+            final long deadline;
 
-            if (getBlockIfLimitReachedTimeout() > 0) {
-                deadline = System.currentTimeMillis() + getBlockIfLimitReachedTimeout();
+            long timeout = 0;
+
+            if (configuration.isBlockIfSessionPoolIsFull() && configuration.getBlockIfSessionPoolIsFullTimeout() > 0) {
+                deadline = System.currentTimeMillis() + configuration.getBlockIfSessionPoolIsFullTimeout();
+                timeout = configuration.getBlockIfSessionPoolIsFullTimeout();
+            } else {
+                deadline = 0;
             }
 
             while (!destroyed) {
-                if (activeSessions.size() == getMaxSessions()) {
-                    if (configuration.isBlockIfSessionPoolIsFull() && timeout != 0) {
-                        try {
-                            if (timeout > 0) {
-                                JmsAbstractSessionPool.this.wait(timeout);
-                            } else {
-                                JmsAbstractSessionPool.this.wait();
-                            }
-                        } catch (InterruptedException e) {
-                            // Choosing to throw resource allocation error here as clients are more likely
-                            // to handle this gracefully than other types which are less clear about the
-                            // outcome from a JMS perspective. Set the interrupted state so that an outside
-                            // observer can witness the state.
-                            Thread.currentThread().interrupt();
-
-                            throw new ResourceAllocationException(
-                                "JMS Pool has reached the max number of pooled sessions for this connection and " +
-                               "was interrupted while waiting for one to become available.");
-                        } finally {
-                            if (timeout >= 0) {
-                                timeout = Math.max(deadline - System.currentTimeMillis(), 0);
-                            }
-
-                            checkedIsDestroyed();
-                        }
-
-                        continue; // Pinned to check on max active sessions.
-                    } else {
+                if (activeSessions.size() >= getMaxSessions()) {
+                    if (!configuration.isBlockIfSessionPoolIsFull()) {
                         throw new ResourceAllocationException(
                             "JMS Pool has reached the max number of pooled sessions for this connection.");
                     }
+
+                    try {
+                        if (configuration.getBlockIfSessionPoolIsFullTimeout() > 0) {
+                            JmsAbstractSessionPool.this.wait(timeout);
+                        } else {
+                            JmsAbstractSessionPool.this.wait();
+                        }
+                    } catch (InterruptedException e) {
+                        // Choosing to throw resource allocation error here as clients are more likely
+                        // to handle this gracefully than other types which are less clear about the
+                        // outcome from a JMS perspective. Set the interrupted state so that an outside
+                        // observer can witness the state.
+                        Thread.currentThread().interrupt();
+
+                        throw new ResourceAllocationException(
+                            "JMS Pool has reached the max number of pooled sessions for this connection and " +
+                            "was interrupted while waiting for one to become available.");
+                    } finally {
+                        checkedIsDestroyed();
+                    }
+
+                    if (configuration.getBlockIfSessionPoolIsFullTimeout() > 0) {
+                        timeout = deadline - System.currentTimeMillis();
+
+                        if (activeSessions.size() == getMaxSessions() && timeout <= 0) {
+                            throw new ResourceAllocationException(
+                                "JMS Pool timed out waiting for an idle session to become available.");
+                        }
+                    }
+
+                    continue; // Re-check the limits and wait more if needed
                 }
 
                 final SP session;

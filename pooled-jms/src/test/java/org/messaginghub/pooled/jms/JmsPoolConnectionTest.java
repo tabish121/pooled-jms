@@ -34,6 +34,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -41,6 +42,8 @@ import org.messaginghub.pooled.jms.mock.MockJMSConnection;
 import org.messaginghub.pooled.jms.mock.MockJMSConnectionFactory;
 import org.messaginghub.pooled.jms.mock.MockJMSConnectionMetaData;
 import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
+import org.messaginghub.pooled.jms.mock.MockJMSDefaultSessionListener;
+import org.messaginghub.pooled.jms.mock.MockJMSSession;
 import org.messaginghub.pooled.jms.mock.MockJMSTemporaryQueue;
 import org.messaginghub.pooled.jms.mock.MockJMSTemporaryTopic;
 import org.messaginghub.pooled.jms.util.Wait;
@@ -660,5 +663,38 @@ public class JmsPoolConnectionTest extends JmsPoolTestSupport {
         assertNotSame(session1, session2);
 
         assertThrows(ResourceAllocationException.class, () -> connection.createSession());
+    }
+
+    @Test
+    public void testIdleSessionsDisabledCreatesNewSessionOnEachCreateCall() throws Exception {
+        cf.setMaxSessionsPerConnection(2);
+        cf.setMaxIdleSessionsPerConnection(0);
+        cf.setBlockIfSessionPoolIsFull(false);
+
+        final Connection connection = cf.createConnection();
+
+        final JmsPoolSession session1 = (JmsPoolSession) connection.createSession();
+        final MockJMSSession providerSession1 = (MockJMSSession) session1.getProviderSession();
+        final AtomicBoolean firstSessionClosed = new AtomicBoolean();
+
+        providerSession1.addSessionListener(new MockJMSDefaultSessionListener() {
+
+            @Override
+            public void onSessionClosed(MockJMSSession session) throws JMSException {
+                firstSessionClosed.set(true);
+            }
+        });
+
+        assertNotNull(providerSession1);
+
+        // No idle sessions allowed so a call to close should close the provider session
+        session1.close();
+
+        final JmsPoolSession session2 = (JmsPoolSession) connection.createSession();
+        final Session providerSession2 = session2.getProviderSession();
+
+        assertNotNull(providerSession2);
+        assertNotSame(providerSession1, providerSession2);
+        assertTrue(firstSessionClosed.get());
     }
 }

@@ -35,7 +35,6 @@ import jakarta.jms.JMSException;
 import jakarta.jms.JMSRuntimeException;
 import jakarta.jms.QueueConnection;
 import jakarta.jms.QueueConnectionFactory;
-import jakarta.jms.ResourceAllocationException;
 import jakarta.jms.Session;
 import jakarta.jms.TopicConnection;
 import jakarta.jms.TopicConnectionFactory;
@@ -223,7 +222,8 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
 
     /**
      * Returns the currently configured maximum idle sessions per connection which by
-     * default matches the configured maximum active sessions per connection.
+     * default matches the configured maximum active sessions per connection unless the
+     * maximum sessions limit is disabled.
      *
      * @return the number if idle sessions allowed per connection before they are closed.
      *
@@ -250,11 +250,15 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
      * this amount.
      * <p>
      * If the max idle sessions per connection is configured larger than the max sessions value
-     * it will be truncated to the max sessions value to conform to the total limit on how many
-     * sessions can exists at any given time on a per connection basis.
+     * it will be truncated to the max sessions value (if enabled) to conform to the total limit
+     * on how many sessions can exists at any given time on a per connection basis. If the value
+     * is configured to zero then no idle sessions will be kept and a new session will be created
+     * on each call to create session.
      *
      * @param maxIdleSessionsPerConnection
      *    the number of idle sessions allowed per connection before they are closed.
+     *
+     * @throws IllegalArgumentException if the value is negative
      *
      * @see setMaxSessionsPerConnection
      */
@@ -265,7 +269,8 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
     /**
      * Returns the currently configured maximum number of sessions a pooled Connection will
      * create before it either blocks or throws an exception when a new session is requested,
-     * depending on configuration.
+     * depending on configuration. If the max sessions limit is disabled this method returns
+     * the value <code>-1</code>.
      *
      * @return the number of session instances that can be taken from a pooled connection.
      *
@@ -277,12 +282,18 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
     }
 
     /**
-     * Sets the maximum number of pooled sessions allowed per connection.
+     * Sets the maximum number of pooled sessions allowed per connection, a value of zero
+     * throws an error as the pool must be able to create at least one session in order to
+     * function. A negative value disables the limit on number of sessions.
      * <p>
      * A Connection that is created from this JMS Connection pool can limit the number
-     * of Sessions that are created and loaned out.  When a limit is in place the client
+     * of Sessions that are created and loaned out. When a limit is in place the client
      * application must be prepared to respond to failures or hangs of the various
-     * {@link Connection#createSession()} methods.
+     * {@link Connection#createSession()} methods. Just like the maximum connections limit
+     * this value is applied to each session acknowledgement mode individually such that
+     * by default a connection could have more than this number of session in total if
+     * sessions have been created with different acknowledgement modes from the same
+     * connection.
      * <p>
      * Because Connections can be borrowed and returned at will the available Sessions for
      * a Connection in the pool can change dynamically so even on fresh checkout from this
@@ -347,11 +358,11 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
      * to a non-zero value and the pool will actively check for idle connections that have exceeded their
      * idle timeout value.
      * <p>
-     * A value of -1 disables idle connection checks while a non-zero value enables a periodic check for
-     * idle connections. The task of checking connections for idle state eviction can contend with the
-     * calls to create new connections if the pool size is large so care should be taken to not set the
-     * check interval too low, the implementation itself reserves the right to enforce a minimum value
-     * for the time between eviction runs when they are enabled.
+     * A value of less than or equal to zero disables idle connection checks while a non-zero value
+     * enables a periodic check for idle connections. The task of checking connections for idle state
+     * eviction can contend with the calls to create new connections if the pool size is large so care
+     * should be taken to not set the check interval too low, the implementation itself reserves the right
+     * to enforce a minimum value for the time between eviction runs when they are enabled.
      *
      * @param connectionIdleTimeout
      *      The maximum time a pooled Connection can sit unused before it is eligible for removal.
@@ -439,10 +450,9 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
      * value that has been configured. Whether or not the call to create session blocks is controlled
      * by the {@link #setBlockIfSessionPoolIsFull(boolean)} property.
      * <p>
-     * By default the timeout defaults to -1 and a blocked call to create a Session will wait
-     * indefinitely for a new {@link Session}. A value of zero for the timeout is treated as
-     * though the {@link #isBlockIfSessionPoolIsFull()} was set to false meaning that if there
-     * is no available session an {@link ResourceAllocationException} will be thrown.
+     * By default the timeout defaults to disabled and a blocked call to create a Session will wait
+     * indefinitely for a new {@link Session}. A value less than or equal to zero for the timeout is
+     * treated as though no timeout is configured and a call to create a session blocks forever.
      *
      * @param blockIfSessionPoolIsFullTimeout
      * 		if {@link #isBlockIfSessionPoolIsFull()} is true then use this setting
@@ -527,7 +537,8 @@ public abstract class JmsPoolAbstractConnectionFactory<E extends JmsAbstractConn
      * checked on borrow to determine if they are still valid and can continue to be used or should
      * be closed and or evicted from the pool.
      * <p>
-     * By default this value is set to -1 and a connection check thread is not started.
+     * By default this check is disabled and any value less than or equal to zero is treated as
+     * disabling it if it was previously enabled.
      *
      * @param connectionCheckInterval
      *      The time to wait between runs of the Connection check thread.

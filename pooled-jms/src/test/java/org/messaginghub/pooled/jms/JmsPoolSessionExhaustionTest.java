@@ -19,10 +19,16 @@ package org.messaginghub.pooled.jms;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.lang.invoke.MethodHandles;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -180,5 +186,66 @@ public class JmsPoolSessionExhaustionTest extends JmsPoolTestSupport {
         assertNotSame(session1, session3);
         assertNotSame(session2, session4);
         assertNotSame(session3, session4);
+    }
+
+    @Test
+    public void testCreateSessionsUnlimitedWhenSessionLimitDisabled() throws Exception {
+        cf.setMaxSessionsPerConnection(-10);
+        assertEquals(-1, cf.getMaxSessionsPerConnection(), "Negative limits should disable the session limit");
+
+        Connection connection = cf.createConnection();
+
+        // Create more sessions than the default limit to verify it is fully disabled.
+        final Session[] sessions = new Session[510];
+        for (int i = 0; i < sessions.length; i++) {
+            sessions[i] = connection.createSession();
+            assertNotNull(sessions[i]);
+        }
+    }
+
+    @Test
+    public void testBlockForeverWaiterStaysBlockedOnUnrelatedSessionClose() throws Exception {
+        doTestWaiterStaysBlockedOnUnrelatedSessionClose(false);
+    }
+
+    @Test
+    public void testWaiterWithTimeoutStaysBlockedOnUnrelatedSessionClose() throws Exception {
+        doTestWaiterStaysBlockedOnUnrelatedSessionClose(true);
+    }
+
+    /**
+     * Session limits are applied per acknowledgement mode so the close of a session of a
+     * different type can wake a blocked createSession call without being able to satisfy
+     * it. The waiter must not treat that wake up as a timeout or hand out a new session
+     * beyond the configured limit and should only complete once a matching session is
+     * released.
+     */
+    private void doTestWaiterStaysBlockedOnUnrelatedSessionClose(boolean withTimeout) throws Exception {
+        cf.setBlockIfSessionPoolIsFull(true);
+        if (withTimeout) {
+            cf.setBlockIfSessionPoolIsFullTimeout(10_000);
+        }
+
+        Connection connection = cf.createConnection();
+        Session held = connection.createSession();
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<Session> blocked = executor.submit(() -> connection.createSession());
+
+            // Allow the taker to enter the blocked state then wake it with the close of
+            // a session from a different acknowledgement mode which cannot free a slot.
+            Thread.sleep(500);
+            connection.createSession(false, Session.CLIENT_ACKNOWLEDGE).close();
+
+            assertThrows(TimeoutException.class, () -> blocked.get(500, TimeUnit.MILLISECONDS),
+                "Session taker should remain blocked when no matching session was released");
+
+            held.close();
+
+            assertNotNull(blocked.get(5, TimeUnit.SECONDS));
+        } finally {
+            executor.shutdownNow();
+        }
     }
 }

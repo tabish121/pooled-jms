@@ -89,7 +89,7 @@
         <configuration>
           <instructions>
             <Bundle-SymbolicName>org.messaginghub.pooled.jms</Bundle-SymbolicName>
-            <Export-Package>org.messaginghub.pooled.jms.*</Export-Package>
+            <Export-Package>!org.messaginghub.pooled.jms.internal.*,org.messaginghub.pooled.jms.*</Export-Package>
             <!-- TODO Should probably make transaction bits optional -->
             <Import-Package>*</Import-Package>
             <Dynamic-ImportPackage>*</Dynamic-ImportPackage>

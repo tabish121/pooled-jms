@@ -483,8 +483,7 @@ public class JmsPoolConnectionFactoryTest extends JmsPoolTestSupport {
 
         assertThrows(IllegalArgumentException.class, () -> cf.setMaxConnections(-1));
         assertThrows(IllegalArgumentException.class, () -> cf.setExplicitProducerCacheSize(-1));
-        assertThrows(IllegalArgumentException.class, () -> cf.setMaxSessionsPerConnection(-1));
+        assertThrows(IllegalArgumentException.class, () -> cf.setMaxSessionsPerConnection(0));
         assertThrows(IllegalArgumentException.class, () -> cf.setMaxIdleSessionsPerConnection(-1));
-        assertThrows(IllegalArgumentException.class, () -> cf.setBlockIfSessionPoolIsFullTimeout(-2));
     }
 }

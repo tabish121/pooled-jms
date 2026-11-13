@@ -26,7 +26,7 @@ class JmsConnectionProxyConfiguration {
     public static final int DEFAULT_MAX_SESSIONS_PER_CONNECTION = 500;
     public static final int DEFAULT_CONNECTION_IDLE_TIMEOUT = 30_000;
     public static final boolean DEFAULT_BLOCK_IF_SESSION_FULL = true;
-    public static final long DEFAULT_BLOCK_IF_SESSION_FULL_TIMEOUT = -1L;
+    public static final long DEFAULT_BLOCK_IF_SESSION_FULL_TIMEOUT = 0L;
     public static final boolean DEFAULT_USE_ANONYMOUS_PRODUCERS = true;
     public static final int DEFAULT_EXPLICIT_PRODUCER_CACHE_SIZE = 0;
     public static final boolean DEFAULT_USE_PROVIDER_JMS_CONTEXT = false;
@@ -81,11 +81,12 @@ class JmsConnectionProxyConfiguration {
     }
 
     public void setMaxSessionsPerConnection(int maxSessionsPerConnection) {
-        if (maxSessionsPerConnection <= 0) {
-            throw new IllegalArgumentException("Cannot set max sessions per connection to less than one.");
+        if (maxSessionsPerConnection == 0) {
+            throw new IllegalArgumentException(
+                "Cannot set max sessions per connection to zero, at least one session is required for the JMS pool.");
         }
 
-        this.maxSessionsPerConnection = maxSessionsPerConnection;
+        this.maxSessionsPerConnection = Math.max(-1, maxSessionsPerConnection);
     }
 
     public boolean isBlockIfSessionPoolIsFull() {
@@ -101,7 +102,7 @@ class JmsConnectionProxyConfiguration {
     }
 
     public void setConnectionIdleTimeout(int connectionIdleTimeout) {
-        this.connectionIdleTimeout = connectionIdleTimeout;
+        this.connectionIdleTimeout = Math.max(0, connectionIdleTimeout);
     }
 
     public boolean isUseAnonymousProducers() {
@@ -129,11 +130,7 @@ class JmsConnectionProxyConfiguration {
     }
 
     public void setBlockIfSessionPoolIsFullTimeout(long blockIfSessionPoolIsFullTimeout) {
-        if (blockIfSessionPoolIsFullTimeout < -1) {
-            throw new IllegalArgumentException("Legal values are -1 or >= 0 for block on session pool is full timeout");
-        }
-
-        this.blockIfSessionPoolIsFullTimeout = blockIfSessionPoolIsFullTimeout;
+        this.blockIfSessionPoolIsFullTimeout = Math.max(0, blockIfSessionPoolIsFullTimeout);
     }
 
     public boolean isFaultTolerantConnections() {

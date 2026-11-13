@@ -132,7 +132,7 @@ public abstract class JmsAbstractConnectionPool<CP extends JmsAbstractConnection
      */
     public synchronized void setConnectionCheckInterval(long connectionCheckInterval) {
         if (this.connectionCheckInterval != connectionCheckInterval) {
-            if (connectionCheckInterval >= 0) {
+            if (connectionCheckInterval > 0) {
                 connectionCheckInterval = Math.max(MIN_TIME_BETWEEN_EVICTION_RUNS, connectionCheckInterval);
             } else {
                 connectionCheckInterval = PERIODIC_CONNECTION_CHECK_DISABLED;
