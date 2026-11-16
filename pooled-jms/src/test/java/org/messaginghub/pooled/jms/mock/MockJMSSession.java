@@ -117,6 +117,11 @@ public class MockJMSSession implements Session, QueueSession, TopicSession, Auto
     @Override
     public int getAcknowledgeMode() throws JMSException {
         checkClosed();
+
+        for (MockJMSSessionListener listener : sessionListeners) {
+            listener.onSessionAcknowledge(this);
+        }
+
         return sessionMode;
     }
 
@@ -149,6 +154,10 @@ public class MockJMSSession implements Session, QueueSession, TopicSession, Auto
     @Override
     public void recover() throws JMSException {
         checkClosed();
+
+        for (MockJMSSessionListener listener : sessionListeners) {
+            listener.onSessionRecover(this);
+        }
     }
 
     @Override

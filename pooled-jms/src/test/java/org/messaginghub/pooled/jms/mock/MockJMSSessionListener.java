@@ -30,6 +30,10 @@ public interface MockJMSSessionListener {
 
     void onSessionRollback(MockJMSSession session) throws JMSException;
 
+    void onSessionRecover(MockJMSSession session) throws JMSException;
+
+    void onSessionAcknowledge(MockJMSSession session) throws JMSException;
+
     void onSessionClosed(MockJMSSession session) throws JMSException;
 
     void onConsumerClose(MockJMSSession session, MockJMSMessageConsumer consumer) throws JMSException;

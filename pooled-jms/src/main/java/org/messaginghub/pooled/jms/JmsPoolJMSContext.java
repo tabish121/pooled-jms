@@ -132,17 +132,10 @@ public class JmsPoolJMSContext implements JMSContext, AutoCloseable {
     public void acknowledge() {
         checkClosed();
 
-        // Because the pooled version of the JMS context uses a shared connection and therefore shared sessions
-        // we don't currently support this method as calling acknowledge on a session that was returned to the pool
-        // with message that were not acknowledged by a previous user we could end up sending an acknowledgement for
-        // messages that were not meant to have been. In a future version we could consider alternatives to allow
-        // this to work. One possible option is to add support for asking the connection for an non-pooled session
-        // such that we know the state it arrives in and can safely call the acknowledge API.
-        //
-        // TODO: Consider if on close of a loaned JMS session we might just call recover such that message that
-        //       were not acknowledged before close become deliverable again which seems like it would be in line
-        //       with what one expects for a non-pooled JMS session where the un-acknowledged messages return to
-        //       the delivery queue on the broker.
+        // The JMS session API doesn't offer a way to do this generically via an acknowledge() method
+        // We would have to somehow track the last delivered message from the various JMSConsumer
+        // instances which can be in play and that would be filled with race conditions or require
+        // some extreme locking to accomplish
         if (getSessionMode() == Session.CLIENT_ACKNOWLEDGE) {
             throw new JMSRuntimeException("Pooled JMS Context does not support acknowledge() client must acknowledge messages");
         }

@@ -130,6 +130,25 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
     }
 
     @Test
+    public void testCloseOnClientAckSessionTriggersRecover() throws Exception {
+        final AtomicBoolean recovered = new AtomicBoolean();
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        JmsPoolSession session = (JmsPoolSession) connection.createSession(Session.CLIENT_ACKNOWLEDGE);
+        MockJMSSession mockSession = (MockJMSSession) session.getProviderSession();
+        mockSession.addSessionListener(new MockJMSDefaultSessionListener() {
+
+            @Override
+            public void onSessionRecover(MockJMSSession session) throws JMSException {
+                recovered.set(true);
+            }
+        });
+
+        session.close();
+        assertTrue(recovered.get(), "Session should recover on close");
+    }
+
+    @Test
     public void testCloseWithErrorOnRollbackInvalidatesSession() throws Exception {
         final AtomicBoolean rolledBack = new AtomicBoolean();
         final AtomicBoolean closed = new AtomicBoolean();

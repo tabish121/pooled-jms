@@ -143,6 +143,15 @@ public abstract class JmsPoolAbstractSession implements Session, TopicSession, Q
                 LOG.warn("Caught exception trying rollback() when putting session back into the pool, will invalidate. " + e, e);
                 cleanupError.compareAndSet(null, e);
             }
+        } else {
+            try {
+                if (session.getAcknowledgeMode() == Session.CLIENT_ACKNOWLEDGE) {
+                    session.recover();
+                }
+            } catch (JMSException e) {
+                LOG.warn("Caught exception trying recover() when putting session back into the pool, will invalidate. " + e, e);
+                cleanupError.compareAndSet(null, e);
+            }
         }
 
         sessionEventListeners.keySet().forEach(listener -> {

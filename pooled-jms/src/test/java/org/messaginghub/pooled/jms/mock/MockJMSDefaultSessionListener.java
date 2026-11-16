@@ -30,6 +30,12 @@ public class MockJMSDefaultSessionListener implements MockJMSSessionListener {
     public void onSessionRollback(MockJMSSession session) throws JMSException {}
 
     @Override
+    public void onSessionRecover(MockJMSSession session) throws JMSException {}
+
+    @Override
+    public void onSessionAcknowledge(MockJMSSession session) throws JMSException {}
+
+    @Override
     public void onSessionClosed(MockJMSSession session) throws JMSException {}
 
     @Override
