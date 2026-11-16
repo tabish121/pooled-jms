@@ -21,6 +21,7 @@ import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.messaginghub.pooled.jms.JmsPoolConnectionStatistics;
@@ -269,15 +270,23 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
         }
 
         public SP nextIdle() throws JMSException {
-            final long deadline;
+            final long startTime;
+            final long timeoutNanos;
+            final boolean timedWait = configuration.isBlockIfSessionPoolIsFull() &&
+                                      configuration.getBlockIfSessionPoolIsFullTimeout() > 0;
 
-            long timeout = 0;
+            long waitMillis;
 
-            if (configuration.isBlockIfSessionPoolIsFull() && configuration.getBlockIfSessionPoolIsFullTimeout() > 0) {
-                deadline = System.currentTimeMillis() + configuration.getBlockIfSessionPoolIsFullTimeout();
-                timeout = configuration.getBlockIfSessionPoolIsFullTimeout();
+            if (timedWait) {
+                // Use extreme caution to ensure we never trigger an indefinite wait by accident by clamping timeout at 1ns
+                // Only call System.nanoTime when timed to reduce call costs.
+                startTime = System.nanoTime();
+                timeoutNanos = TimeUnit.MILLISECONDS.toNanos(configuration.getBlockIfSessionPoolIsFullTimeout());
+                waitMillis = Math.max(1L, timeoutNanos / 1_000_000L);
             } else {
-                deadline = 0;
+                startTime = 0;
+                timeoutNanos = 0;
+                waitMillis = 0;
             }
 
             while (!destroyed) {
@@ -288,8 +297,8 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
                     }
 
                     try {
-                        if (configuration.getBlockIfSessionPoolIsFullTimeout() > 0) {
-                            JmsAbstractSessionPool.this.wait(timeout);
+                        if (timedWait) {
+                            JmsAbstractSessionPool.this.wait(waitMillis);
                         } else {
                             JmsAbstractSessionPool.this.wait();
                         }
@@ -307,13 +316,16 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
                         checkedIsDestroyed();
                     }
 
-                    if (configuration.getBlockIfSessionPoolIsFullTimeout() > 0) {
-                        timeout = deadline - System.currentTimeMillis();
+                    if (timedWait) {
+                        long remaining = timeoutNanos - Math.max(0L, System.nanoTime() - startTime);
 
-                        if (activeSessions.size() == getMaxSessions() && timeout <= 0) {
+                        if (activeSessions.size() >= getMaxSessions() && remaining <= 0) {
                             throw new ResourceAllocationException(
                                 "JMS Pool timed out waiting for an idle session to become available.");
                         }
+
+                        // Use extreme caution to ensure we never trigger an indefinite wait by accident by clamping timeout at 1ns
+                        waitMillis = Math.max(1L, remaining / 1_000_000L);
                     }
 
                     continue; // Re-check the limits and wait more if needed

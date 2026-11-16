@@ -227,7 +227,7 @@ public class JmsPoolSessionExhaustionTest extends JmsPoolTestSupport {
         }
 
         Connection connection = cf.createConnection();
-        Session held = connection.createSession();
+        Session session = connection.createSession();
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
@@ -236,16 +236,59 @@ public class JmsPoolSessionExhaustionTest extends JmsPoolTestSupport {
             // Allow the taker to enter the blocked state then wake it with the close of
             // a session from a different acknowledgement mode which cannot free a slot.
             Thread.sleep(500);
+
             connection.createSession(false, Session.CLIENT_ACKNOWLEDGE).close();
 
             assertThrows(TimeoutException.class, () -> blocked.get(500, TimeUnit.MILLISECONDS),
                 "Session taker should remain blocked when no matching session was released");
 
-            held.close();
+            session.close();
 
             assertNotNull(blocked.get(5, TimeUnit.SECONDS));
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    public void testWaiterTimesOutWhenNoSessionIsReleased() throws Exception {
+        doTestWaiterTimesOutWhenNoSessionIsReleased(50, 30);
+    }
+
+    @Test
+    public void testWaiterWithOneMillisecondTimeoutTimesOutInsteadOfWaitingForever() throws Exception {
+        doTestWaiterTimesOutWhenNoSessionIsReleased(1, 0);
+    }
+
+    /**
+     * A timed waiter must fail with a timeout error once its deadline expires even when no
+     * session is ever released. The wait is floored at one millisecond per wake up so the
+     * final iteration can round the sub-millisecond remaining time up from a truncated zero,
+     * letting the timeout fire just past the deadline. Without that floor the truncated zero
+     * would become an indefinite wait call and the waiter would never observe the expiry.
+     */
+    private void doTestWaiterTimesOutWhenNoSessionIsReleased(long timeout, long minExpectedWait) throws Exception {
+        cf.setBlockIfSessionPoolIsFull(true);
+        cf.setBlockIfSessionPoolIsFullTimeout(timeout);
+
+        Connection connection = cf.createConnection();
+        Session session = connection.createSession();
+
+        long startTime = System.currentTimeMillis();
+        ResourceAllocationException error = assertThrows(ResourceAllocationException.class, () -> connection.createSession(),
+            "Session taker should time out when no session is ever released");
+        long elapsed = System.currentTimeMillis() - startTime;
+
+        assertTrue(elapsed >= minExpectedWait,
+            "Session taker should wait at least " + minExpectedWait + " ms but returned after " + elapsed + " ms");
+        assertTrue(elapsed < 5_000,
+            "Session taker timeout fired too far past the deadline: " + elapsed + " ms");
+
+        LOG.info("Session taker timed out after {} ms as expected: {}", elapsed, error.getMessage());
+
+        session.close();
+
+        // The pool must remain usable for new takers after a waiter times out.
+        assertNotNull(connection.createSession());
     }
 }
