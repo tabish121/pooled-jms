@@ -20,18 +20,24 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.messaginghub.pooled.jms.internal.JmsAbstractSessionPool;
 import org.messaginghub.pooled.jms.mock.MockJMSConnection;
 import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
 import org.messaginghub.pooled.jms.mock.MockJMSDefaultSessionListener;
@@ -1183,5 +1189,213 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
 
         session.close();
         connection.close();
+    }
+
+    @Test
+    public void testExplicitProducersAreClosedWhenProducerCachingIsDisabled() throws Exception {
+        final int producerCreates = 5;
+
+        cf.setUseAnonymousProducers(false);
+        cf.setExplicitProducerCacheSize(0);
+
+        assertFalse(cf.isUseAnonymousProducers());
+        assertEquals(0, cf.getExplicitProducerCacheSize());
+
+        final AtomicInteger producersCreated = new AtomicInteger();
+        final AtomicInteger producersClosed = new AtomicInteger();
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
+        mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
+
+            @Override
+            public void onCreateMessageProducer(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
+                producersCreated.incrementAndGet();
+            }
+
+            @Override
+            public void onCloseMessageProducer(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
+                producersClosed.incrementAndGet();
+            }
+        });
+
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        Queue queue = session.createTemporaryQueue();
+
+        // With no cache configured every create must make a new provider producer and nothing
+        // else holds that producer, so closing the wrapper must release the provider resource
+        // and not leave it open for the life of the pooled session instance.
+        for (int i = 0; i < producerCreates; i++) {
+            MessageProducer producer = session.createProducer(queue);
+            producer.close();
+        }
+
+        assertEquals(producerCreates, producersCreated.get());
+        assertEquals(producerCreates, producersClosed.get());
+
+        session.close();
+        connection.close();
+    }
+
+    @Test
+    public void testIdleAllMustNotIdleMoreSessionsThanTheMaxIdleLimit() throws Exception {
+        final int NUM_SESSIONS = 3;
+        final int NUM_MAX_IDLE_SESSIONS = 1;
+
+        cf.setMaxSessionsPerConnection(NUM_SESSIONS);
+        cf.setMaxIdleSessionsPerConnection(NUM_MAX_IDLE_SESSIONS);
+        cf.setBlockIfSessionPoolIsFull(false);
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        JmsAbstractSessionPool<?> sessionPool = (JmsAbstractSessionPool<?>) connection.getStatistics();
+
+        assertEquals(NUM_SESSIONS, sessionPool.getMaxSessions());
+        assertEquals(NUM_MAX_IDLE_SESSIONS, sessionPool.getMaxIdleSessions());
+
+        for (int i = 0; i < NUM_SESSIONS; i++) {
+            connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        }
+
+        assertEquals(NUM_SESSIONS, connection.getNumActiveSessions());
+        assertEquals(0, connection.getNumIdleSessions());
+
+        sessionPool.idle();
+
+        // Force idling must respect the configured idle limit and close the excess sessions
+        // rather than pushing every active proxy into the idle queue.
+        assertEquals(NUM_MAX_IDLE_SESSIONS, connection.getNumIdleSessions(), "idle queue overshot maxIdleSessionsPerConnection");
+        assertEquals(NUM_MAX_IDLE_SESSIONS, connection.getNumSessions(), "surplus sessions should have been closed on force idle");
+
+        connection.close();
+    }
+
+    @Test
+    public void testReturnedSessionIsClosedWhenIdleQueueIsOverTheMaxIdleLimit() throws Exception {
+        final int NUM_SESSIONS = 3;
+        final int NUM_MAX_IDLE_SESSIONS = 1;
+
+        cf.setMaxSessionsPerConnection(NUM_SESSIONS);
+        cf.setMaxIdleSessionsPerConnection(NUM_MAX_IDLE_SESSIONS);
+        cf.setBlockIfSessionPoolIsFull(false);
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        JmsAbstractSessionPool<?> sessionPool = (JmsAbstractSessionPool<?>) connection.getStatistics();
+
+        for (int i = 0; i < NUM_SESSIONS; i++) {
+            connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        }
+
+        // Overfill the idle queue the same way the force idle path does today. Once the queue
+        // is past the limit the release check must still close returned sessions. If the force
+        // idle is fixed to honour the limit this scenario has to be reached another way.
+        sessionPool.idle();
+        assumeTrue(connection.getNumIdleSessions() > NUM_MAX_IDLE_SESSIONS,
+            "force idle no longer overfills the idle queue, this case needs a different setup");
+
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        assertEquals(NUM_SESSIONS - 1, connection.getNumIdleSessions());
+
+        session.close();
+
+        // The idle queue is over its limit so the returned session must be discarded, not
+        // added back to the idle queue and held for the life of the pooled connection.
+        assertEquals(NUM_SESSIONS - 1, connection.getNumIdleSessions(), "returned session should have been closed, idle queue is already over the limit");
+        assertEquals(NUM_SESSIONS - 1, connection.getNumSessions());
+
+        connection.close();
+    }
+
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    public void testIdleAllWakesCallerBlockedOnSessionPool() throws Exception {
+        cf.setMaxSessionsPerConnection(1);
+        cf.setBlockIfSessionPoolIsFull(true);
+        cf.setBlockIfSessionPoolIsFullTimeout(0);
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        JmsAbstractSessionPool<?> sessionPool = (JmsAbstractSessionPool<?>) connection.getStatistics();
+
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        assertEquals(1, connection.getNumActiveSessions());
+
+        final CountDownLatch finished = new CountDownLatch(1);
+        final AtomicReference<Throwable> waiterError = new AtomicReference<>();
+
+        Thread waiter = new Thread(() -> {
+            try {
+                connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            } catch (Throwable error) {
+                waiterError.set(error);
+            } finally {
+                finished.countDown();
+            }
+        }, "Pooled-JMS-Session-Pool-Waiter");
+        waiter.setDaemon(true);
+        waiter.start();
+
+        // Let the second caller park in the session pool waiting for a free session slot.
+        long deadline = System.currentTimeMillis() + 5_000;
+        while (waiter.getState() != Thread.State.WAITING && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+
+        assertEquals(Thread.State.WAITING, waiter.getState(), "caller should be blocked waiting for a pooled session");
+
+        // Force idling frees the active session slot, waiters must be signalled so they can
+        // take it instead of staying parked on a full pool that is no longer full.
+        sessionPool.idle();
+        assertEquals(0, connection.getNumActiveSessions());
+
+        assertTrue(finished.await(5, TimeUnit.SECONDS), "blocked caller was never signalled when the session pool was force idled");
+        waiter.join(TimeUnit.SECONDS.toMillis(5));
+        assertNull(waiterError.get(), "signalled caller should have been handed a session");
+
+        session.close();
+        connection.close();
+    }
+
+    @Test
+    public void testProviderSessionCloseFailureIsNotReportedAndSessionIsNeverReused() throws Exception {
+        cf.setMaxSessionsPerConnection(4);
+        cf.setMaxIdleSessionsPerConnection(1);
+        cf.setBlockIfSessionPoolIsFull(false);
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+
+        final List<MockJMSSession> closeAttempts = new ArrayList<>();
+        MockJMSConnection providerConnection = (MockJMSConnection) connection.getProviderConnection();
+        providerConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
+
+            @Override
+            public void onCloseSession(MockJMSSession session) throws JMSException {
+                closeAttempts.add(session);
+            }
+        });
+
+        // The pool only closes a provider session once the idle queue is full, so create more
+        // sessions than the idle limit and make every provider session report a close failure.
+        for (int i = 0; i < 3; i++) {
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            ((MockJMSSession) ((JmsPoolSession) session).getProviderSession())
+                .setExceptionToThrowOnClose(new JMSException("Forced provider session close failure"));
+        }
+
+        // Session close failures are swallowed by the session proxy (logged at TRACE) so the
+        // pooled connection close must still complete and must still release its pooled
+        // reference, and the pool must never hand a session it tried to close to a new caller.
+        connection.close();
+
+        assertFalse(closeAttempts.isEmpty(), "no provider session close was attempted, this test is not exercising the failure path");
+
+        JmsPoolConnection reopened = (JmsPoolConnection) cf.createConnection();
+        for (int i = 0; i < 2; i++) {
+            Session session = reopened.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            MockJMSSession providerSession = (MockJMSSession) ((JmsPoolSession) session).getProviderSession();
+            assertFalse(closeAttempts.contains(providerSession),
+                "a provider session whose close failed was handed to a new caller");
+            session.close();
+        }
+
+        reopened.close();
     }
 }

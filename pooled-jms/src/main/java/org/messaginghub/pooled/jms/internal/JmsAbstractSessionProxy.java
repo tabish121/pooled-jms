@@ -534,14 +534,19 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
                 delegate = cachedProducers.get(destination);
 
                 if (delegate == null) {
-                    // Cached instance is held until evicted from the cache so take an additional reference on create.
+                    final ReferenceCounted refCounter = new ReferenceCounted();
+
                     delegate = new JmsMessageProducerProxy(versionSupport,
                                                            session.createProducer(destination),
                                                            destination,
-                                                           new ReferenceCounted().acquire(),
+                                                           refCounter,
                                                            this);
 
-                    cachedProducers.put(destination, delegate);
+                    if (cachedProducers.put(destination, delegate)) {
+                        // Cached instance is held until evicted from the cache so take an additional
+                        // reference once we know it is in the cache
+                        refCounter.acquire();
+                    }
                 }
             }
 
@@ -570,8 +575,10 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
          * 		The destination to store the producer at
          * @param producer
          * 		The producer proxy to store within the producer cache
+         *
+         * @return <code>true</code> if the value was stored in the cache, <code>false</code> otherwise
          */
-        void put(Destination destination, JmsMessageProducerProxy producer);
+        boolean put(Destination destination, JmsMessageProducerProxy producer);
 
         /**
          * Gets the JMS message producer proxy assigned to the given {@link Destination} key or
@@ -621,7 +628,7 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
         }
 
         @Override
-        public void put(Destination destination, JmsMessageProducerProxy producer) {
+        public boolean put(Destination destination, JmsMessageProducerProxy producer) {
             Objects.requireNonNull(destination, "Destination is not allowed to be null in this cache");
             Objects.requireNonNull(producer, "Cannot store a null producer proxy in a destination slot");
 
@@ -647,6 +654,8 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
                     LOG.trace("Suppressed error on cached producer close", ignored);
                 }
             }
+
+            return true;
         }
 
         @Override
@@ -692,9 +701,11 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
         }
 
         @Override
-        public void put(Destination destination, JmsMessageProducerProxy producer) {
+        public boolean put(Destination destination, JmsMessageProducerProxy producer) {
             Objects.requireNonNull(destination, "Destination is not allowed to be null in this cache");
             Objects.requireNonNull(producer, "Cannot store a null producer proxy in a destination slot");
+
+            return false;
         }
 
         @Override

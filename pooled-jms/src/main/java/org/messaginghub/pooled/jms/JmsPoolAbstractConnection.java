@@ -97,8 +97,11 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
     public void close() throws JMSException {
         if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
             cleanupManagedConnectionResources();
-            connection.removeExceptionConsumer(exceptionConsumer).close();
-            exceptionListener = null;
+            try {
+                connection.removeExceptionConsumer(exceptionConsumer).close();
+            } finally {
+                exceptionListener = null;
+            }
         }
     }
 

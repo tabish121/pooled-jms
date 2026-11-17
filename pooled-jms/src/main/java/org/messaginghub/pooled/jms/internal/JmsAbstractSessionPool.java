@@ -246,20 +246,40 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
         }
 
         public void idleAll() {
-            idleSessions.addAll(activeSessions);
+            final int maxIdleSessions = getMaxIdleSessions();
+
+            activeSessions.forEach(session -> {
+                if (idleSessions.size() < maxIdleSessions) {
+                    idleSessions.add(session);
+                } else {
+                    try {
+                        session.internalClose();
+                    } catch (Exception e) {
+                        LOG.trace("Ignored error on close of pooled session", e);
+                    }
+                }
+            });
             activeSessions.clear();
+
+            // Signal any waiters to wake up and see that the pool state has changed and possibly
+            // now have access to an idle session that was not available before.
+            JmsAbstractSessionPool.this.notifyAll();
         }
 
         public void destroy() {
             activeSessions.forEach(session -> {
                 try {
                     session.internalClose();
-                } catch (Exception e) {}
+                } catch (Exception e) {
+                    LOG.trace("Ignored error on close of pooled session", e);
+                }
             });
             idleSessions.forEach(session -> {
                 try {
                     session.internalClose();
-                } catch (Exception e) {}
+                } catch (Exception e) {
+                    LOG.trace("Ignored error on close of pooled session", e);
+                }
             });
 
             activeSessions.clear();
@@ -369,7 +389,7 @@ public abstract class JmsAbstractSessionPool<SP extends JmsAbstractSessionProxy<
                 // remove it from the closed sessions pool.
                 final boolean wasActive = activeSessions.remove(session);
 
-                if (destroyed || !session.validateSession() || idleSessions.size() == getMaxIdleSessions() || !wasActive) {
+                if (destroyed || !session.validateSession() || idleSessions.size() >= getMaxIdleSessions() || !wasActive) {
                     idleSessions.remove(session);
                     closeSession = true;
                 } else {

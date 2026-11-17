@@ -58,6 +58,10 @@ public class JmsPoolMessageConsumer implements MessageConsumer, AutoCloseable {
     public void close() throws JMSException {
         if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
             try {
+                // As with any JMS resource, a failure on close doesn't have a real
+                // path to recovery. We pass along any exception here but consider this
+                // as our attempt to close and if the provider did not close itself then
+                // that is left as an issue in the provider instance.
                 messageConsumer.close();
             } finally {
                 onClose.accept(this);

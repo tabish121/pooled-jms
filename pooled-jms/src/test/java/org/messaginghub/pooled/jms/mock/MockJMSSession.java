@@ -75,6 +75,8 @@ public class MockJMSSession implements Session, QueueSession, TopicSession, Auto
     private final AtomicLong consumerIdGenerator = new AtomicLong();
     private final AtomicLong producerIdGenerator = new AtomicLong();
 
+    private JMSException throwOnClose;
+
     private MessageListener messageListener;
 
     public MockJMSSession(String sessionId, int sessionMode, MockJMSConnection connection) {
@@ -99,6 +101,10 @@ public class MockJMSSession implements Session, QueueSession, TopicSession, Auto
             for (MockJMSSessionListener listener : sessionListeners) {
                 listener.onSessionClosed(this);
             }
+        }
+
+        if (throwOnClose != null) {
+            throw throwOnClose;
         }
     }
 
@@ -195,6 +201,11 @@ public class MockJMSSession implements Session, QueueSession, TopicSession, Auto
     public void removeSessionListener(MockJMSSessionListener listener) throws JMSException {
         checkClosed();
         sessionListeners.remove(listener);
+    }
+
+    public void setExceptionToThrowOnClose(JMSException exception) throws JMSException {
+        checkClosed();
+        this.throwOnClose = exception;
     }
 
     //----- Message Factory Methods ------------------------------------------//
