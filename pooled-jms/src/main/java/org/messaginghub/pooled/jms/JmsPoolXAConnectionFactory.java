@@ -137,7 +137,7 @@ public class JmsPoolXAConnectionFactory extends JmsPoolAbstractConnectionFactory
 
     @Override
     protected JmsPoolXAConnection newJmsPoolConnection(String username, String password) throws JMSException {
-        return new JmsPoolXAConnection(getConnectionFactoryProxy().createConnection(username, password), transactionManager);
+        return new JmsPoolXAConnection(getConnectionFactoryProxy().createConnection(username, password), getTransactionManager());
     }
 
     @Override
