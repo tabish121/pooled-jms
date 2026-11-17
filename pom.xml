@@ -83,7 +83,7 @@
     <maven-enforcer-plugin-version>3.6.3</maven-enforcer-plugin-version>
     <maven-resources-plugin-version>3.5.0</maven-resources-plugin-version>
     <maven-install-plugin-version>3.1.4</maven-install-plugin-version>
-    <findbugs-maven-plugin-version>3.0.5</findbugs-maven-plugin-version>
+    <spotbugs-maven-plugin-version>4.10.5.0</spotbugs-maven-plugin-version>
     <jacoco-plugin-version>0.8.15</jacoco-plugin-version>
 
     <!-- Test properties -->
@@ -277,6 +277,11 @@
           <groupId>org.jacoco</groupId>
           <artifactId>jacoco-maven-plugin</artifactId>
           <version>${jacoco-plugin-version}</version>
+        </plugin>
+        <plugin>
+          <groupId>com.github.spotbugs</groupId>
+          <artifactId>spotbugs-maven-plugin</artifactId>
+          <version>${spotbugs-maven-plugin-version}}</version>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
