@@ -832,6 +832,69 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
     }
 
     @Test
+    public void testLeastRecentlyUsedCachedProducerIsEvicted() throws Exception {
+        cf.setUseAnonymousProducers(false);
+        cf.setExplicitProducerCacheSize(2);
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+        Queue queue1 = session.createTemporaryQueue();
+        Queue queue2 = session.createTemporaryQueue();
+        Queue queue3 = session.createTemporaryQueue();
+
+        JmsPoolMessageProducer producer1 = (JmsPoolMessageProducer) session.createProducer(queue1);
+        JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(queue2);
+
+        MessageProducer providerProducer1 = producer1.getProviderMessageProducer();
+        MessageProducer providerProducer2 = producer2.getProviderMessageProducer();
+
+        // Asking for Queue #1 again makes it the most recently used cached producer so the
+        // next producer created for a new destination should push out Queue #2 instead.
+        JmsPoolMessageProducer producer1Again = (JmsPoolMessageProducer) session.createProducer(queue1);
+
+        assertSame(providerProducer1, producer1Again.getProviderMessageProducer());
+
+        session.createProducer(queue3);
+
+        JmsPoolMessageProducer producer1Cached = (JmsPoolMessageProducer) session.createProducer(queue1);
+        JmsPoolMessageProducer producer2Replaced = (JmsPoolMessageProducer) session.createProducer(queue2);
+
+        // Queue #1 was used most recently and must have been kept, Queue #2 should have been
+        // discarded to make room for the Queue #3 producer.
+        assertSame(providerProducer1, producer1Cached.getProviderMessageProducer());
+        assertNotSame(providerProducer2, producer2Replaced.getProviderMessageProducer());
+
+        connection.close();
+    }
+
+    @Test
+    public void testCreateSessionAfterSessionWithCachedProducerIsDiscarded() throws Exception {
+        cf.setUseAnonymousProducers(false);
+        cf.setExplicitProducerCacheSize(2);
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        JmsPoolSession session = (JmsPoolSession) connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        Queue queue = session.createTemporaryQueue();
+
+        session.createProducer(queue);
+
+        MockJMSSession mockSession = (MockJMSSession) session.getProviderSession();
+
+        // The session returns to the pool holding its cached producer, closing the provider
+        // session then means the pool discards it and its cached producer on the next request.
+        session.close();
+        mockSession.close();
+
+        Session nextSession = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+        assertNotNull(nextSession, "Should be able to create a session after a pooled session was discarded");
+
+        nextSession.close();
+        connection.close();
+    }
+
+    @Test
     public void testEvictionOfSeeminglyClosedSession() throws Exception {
         cf.setConnectionIdleTimeout(10);
         cf.setMaxSessionsPerConnection(2);
@@ -1064,5 +1127,61 @@ public class JmsPoolSessionTest extends JmsPoolTestSupport {
         session.close();
 
         assertThrows(JMSRuntimeException.class, () -> session.run());
+    }
+
+    @Test
+    public void testCloseOfSharedAnonymousProducerAfterSessionIsDestroyed() throws Exception {
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        Queue queue = session.createTemporaryQueue();
+
+        JmsPoolMessageProducer producer1 = (JmsPoolMessageProducer) session.createProducer(queue);
+        JmsPoolMessageProducer producer2 = (JmsPoolMessageProducer) session.createProducer(queue);
+
+        // Both wrappers share the single destination free producer of the pooled session
+        assertSame(producer1.getProviderMessageProducer(), producer2.getProviderMessageProducer());
+
+        // Drops the pooled session that owns the shared producer while the client wrappers are
+        // still open, from here on the session has no record of that producer instance.
+        cf.clear();
+
+        try {
+            producer1.close();
+            producer2.close();
+        } catch (Exception ex) {
+            fail("Shared producer should close cleanly once its session is gone: " + ex);
+        }
+
+        session.close();
+        connection.close();
+    }
+
+    @Test
+    public void testCloseOfCachedAndAnonymousProducersAfterSessionIsDestroyed() throws Exception {
+        cf.setUseAnonymousProducers(false);
+        cf.setExplicitProducerCacheSize(2);
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createConnection();
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        Queue queue = session.createTemporaryQueue();
+
+        JmsPoolMessageProducer cachedProducer = (JmsPoolMessageProducer) session.createProducer(queue);
+        JmsPoolMessageProducer anonymousProducer = (JmsPoolMessageProducer) session.createProducer(null);
+
+        assertNotSame(cachedProducer.getProviderMessageProducer(), anonymousProducer.getProviderMessageProducer());
+
+        // Drops the pooled session and the producer cache it holds while the client wrappers are
+        // still open, the destination free producer is not cached and is no longer tracked here.
+        cf.clear();
+
+        try {
+            anonymousProducer.close();
+            cachedProducer.close();
+        } catch (Exception ex) {
+            fail("Producer should close cleanly once its session is gone: " + ex);
+        }
+
+        session.close();
+        connection.close();
     }
 }

@@ -18,14 +18,15 @@ package org.messaginghub.pooled.jms.internal;
 
 import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
-import java.util.AbstractMap;
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
+import java.util.Objects;
 
 import org.messaginghub.pooled.jms.util.FixedReference;
 import org.messaginghub.pooled.jms.util.JMSVersionSupport;
-import org.messaginghub.pooled.jms.util.LRUCache;
 import org.messaginghub.pooled.jms.util.ReferenceCounted;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -455,7 +456,7 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
 
     private class ProducerProxyManager implements JmsMessageProducerProxyManager {
 
-        private final Map<Destination, JmsMessageProducerProxy> cachedProducers;
+        private final ProducerCache cachedProducers;
 
         // We either only create anonymous producers in which case these values will hold an instance
         // that we hand out to every caller as the sole JMS message producer in use be the pooled JMS
@@ -466,14 +467,11 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
             if (!configuration.isUseAnonymousProducers() && configuration.getExplicitProducerCacheSize() > 0) {
                 cachedProducers = new ProducerLRUCache(configuration.getExplicitProducerCacheSize());
             } else {
-                cachedProducers = DiscardingMap.getInstance();
+                cachedProducers = DiscardingCache.getInstance();
             }
         }
 
         public synchronized void clear() {
-            // The assumption here is that the session proxy calls this only after it has closed
-            // the parent JMS Session from the provider and so we do not need to close each instance
-            // of the pooled producer instances here.
             anonymousProducer = null;
             cachedProducers.clear();
         }
@@ -551,58 +549,162 @@ public abstract class JmsAbstractSessionProxy<SP extends JmsAbstractSessionProxy
         }
     }
 
-    private static class ProducerLRUCache extends LRUCache<Destination, JmsMessageProducerProxy> {
+    /**
+     * Defines the interface for the internal JmsMessageProducerProxy cache that tracks a producer
+     * mapped to a given destination. The implementation may hold a fixed set of producers or it may
+     * hold none at all.
+     *
+     * These caches are not thread safe and must be protected by the object holding it.
+     */
+    private interface ProducerCache {
 
-        private static final long serialVersionUID = -1;
+        /**
+         * Put the given producer into the cache mapped to the supplied destination.
+         * <p>
+         * Neither the destination or the producer can be null even if the implementation does not
+         * store any actual cached producers. In a storing implementation, once a producer is inserted
+         * and if the result is that a previously stored value must be evicted then the method must
+         * evict and release its reference on the stored producer by closing it.
+         *
+         * @param destination
+         * 		The destination to store the producer at
+         * @param producer
+         * 		The producer proxy to store within the producer cache
+         */
+        void put(Destination destination, JmsMessageProducerProxy producer);
+
+        /**
+         * Gets the JMS message producer proxy assigned to the given {@link Destination} key or
+         * null if there is no producer currently assigned to that destination.
+         *
+         * @param destination
+         * 		The {@link Destination} to lookup an associated producer
+         *
+         * @return the cached JMS producer proxy cached for the given destination
+         */
+        JmsMessageProducerProxy get(Destination destination);
+
+        /**
+         * Remove the JMS producer proxy stored at the given {@link Destination} in the mapping. If
+         * the given destination is null no action is taken
+         *
+         * @param destination
+         * 		The destination whose producer should be removed
+         *
+         * @return the previously stored producer proxy or null if not present
+         */
+        JmsMessageProducerProxy remove(Destination destination);
+
+        /**
+         * Discards all tracking data from this cache
+         */
+        void clear();
+
+    }
+
+    private static class ProducerLRUCache implements ProducerCache {
+
+        private final Map<Destination, JmsMessageProducerProxy> cache;
+
+        private final int maximumCacheSize;
 
         public ProducerLRUCache(int maximumCacheSize) {
-            super(maximumCacheSize);
+            assert maximumCacheSize > 0;
+
+            this.cache = new LinkedHashMap<>(Math.max(16, maximumCacheSize), 0.75f, true);
+            this.maximumCacheSize = maximumCacheSize;
         }
 
         @Override
-        protected void onCacheEviction(Map.Entry<Destination, JmsMessageProducerProxy> eldest) {
-            // Closes the cache's reference to the producer which will close it fully
-            // if the producer is not reference currently by any other client code.
-            final JmsMessageProducerProxy producer = eldest.getValue();
+        public JmsMessageProducerProxy get(Destination destination) {
+            return cache.get(destination);
+        }
 
-            // TODO: Close here can result in concurrent modification of the LRU cache map
+        @Override
+        public void put(Destination destination, JmsMessageProducerProxy producer) {
+            Objects.requireNonNull(destination, "Destination is not allowed to be null in this cache");
+            Objects.requireNonNull(producer, "Cannot store a null producer proxy in a destination slot");
+
+            JmsMessageProducerProxy evicted = null;
+
+            if (cache.size() >= maximumCacheSize) {
+                final Iterator<JmsMessageProducerProxy> values = cache.values().iterator();
+
+                if (values.hasNext()) {
+                    evicted = values.next();
+                    values.remove();
+                }
+            }
+
             try {
-                producer.close();
-            } catch (Exception ex) {}
+                cache.put(destination, producer);
+            } finally {
+                try {
+                    if (evicted != null) {
+                        evicted.close();
+                    }
+                } catch (Exception ignored) {
+                    LOG.trace("Suppressed error on cached producer close", ignored);
+                }
+            }
+        }
+
+        @Override
+        public JmsMessageProducerProxy remove(Destination destination) {
+            if (destination != null) {
+                return cache.remove(destination);
+            } else {
+                return null;
+            }
+        }
+
+        @Override
+        public void clear() {
+            if (cache.isEmpty()) {
+                return;
+            }
+
+            final Collection<JmsMessageProducerProxy> values = new ArrayList<JmsMessageProducerProxy>(cache.values());
+
+            cache.clear();
+
+            values.forEach(producer -> {
+                try {
+                    producer.close();
+                } catch (Exception ignored) {
+                    LOG.trace("Suppressed error on cached producer close", ignored);
+                }
+            });
         }
     }
 
-    private static class DiscardingMap extends AbstractMap<Destination, JmsMessageProducerProxy> {
+    private static class DiscardingCache implements ProducerCache {
 
-        private static final DiscardingMap INSTANCE = new DiscardingMap();
+        private static final DiscardingCache INSTANCE = new DiscardingCache();
 
-        public static Map<Destination, JmsMessageProducerProxy> getInstance() {
+        public static ProducerCache getInstance() {
             return INSTANCE;
         }
 
         @Override
-        public JmsMessageProducerProxy put(Destination key, JmsMessageProducerProxy value) {
+        public JmsMessageProducerProxy get(Destination destination) {
             return null;
         }
 
         @Override
-        public JmsMessageProducerProxy get(Object key) {
-            return null;
+        public void put(Destination destination, JmsMessageProducerProxy producer) {
+            Objects.requireNonNull(destination, "Destination is not allowed to be null in this cache");
+            Objects.requireNonNull(producer, "Cannot store a null producer proxy in a destination slot");
         }
 
         @Override
-        public JmsMessageProducerProxy remove(Object key) {
+        public JmsMessageProducerProxy remove(Destination destination) {
             return null;
         }
 
         @Override
         public void clear() {
-            // Nothing to do here.
-        }
-
-        @Override
-        public Set<Entry<Destination, JmsMessageProducerProxy>> entrySet() {
-            return Collections.emptySet();
+            // Nothing to do
         }
     }
 }
