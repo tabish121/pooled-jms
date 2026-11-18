@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import org.messaginghub.pooled.jms.internal.JmsAbstractConnectionProxy;
+import org.messaginghub.pooled.jms.util.JMSExceptionSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,6 +80,7 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
     private final Set<TemporaryQueue> managedTempQueues = ConcurrentHashMap.newKeySet();
     private final Set<TemporaryTopic> managedTempTopics = ConcurrentHashMap.newKeySet();
     private final Set<Session> managedSessions = ConcurrentHashMap.newKeySet();
+    private final Set<ConnectionConsumer> connectionConsumers = ConcurrentHashMap.newKeySet();
 
     /**
      * Creates a new JMS pool connection instance that uses the given connection proxy to
@@ -96,11 +98,27 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
     @Override
     public void close() throws JMSException {
         if (CLOSED_UPDATER.compareAndSet(this, 0, 1)) {
-            cleanupManagedConnectionResources();
+            Exception firstException = null;
+
+            try {
+                cleanupManagedConnectionResources();
+            } catch (Exception e) {
+                firstException = e;
+            }
+
             try {
                 connection.removeExceptionConsumer(exceptionConsumer).close();
+            } catch (Exception e) {
+                LOG.trace("Caught error from close of JMS connection proxy", e);
+                if (firstException == null) {
+                    firstException = e;
+                }
             } finally {
                 exceptionListener = null;
+            }
+
+            if (firstException != null) {
+                throw JMSExceptionSupport.create(firstException);
             }
         }
     }
@@ -150,32 +168,36 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
 
     @Override
     public ConnectionConsumer createConnectionConsumer(Destination destination, String selector, ServerSessionPool serverSessionPool, int maxMessages) throws JMSException {
-        return safeGetConnection().createConnectionConsumer(destination, selector, serverSessionPool, maxMessages);
+        return wrapConnectionConsumer(safeGetConnection().createConnectionConsumer(destination, selector, serverSessionPool, maxMessages), destination);
     }
 
     @Override
-    public ConnectionConsumer createConnectionConsumer(Topic topic, String s, ServerSessionPool serverSessionPool, int maxMessages) throws JMSException {
-        return safeGetConnection().createConnectionConsumer(topic, s, serverSessionPool, maxMessages);
+    public ConnectionConsumer createConnectionConsumer(Topic topic, String selector, ServerSessionPool serverSessionPool, int maxMessages) throws JMSException {
+        return wrapConnectionConsumer(safeGetConnection().createConnectionConsumer(topic, selector, serverSessionPool, maxMessages), topic);
     }
 
     @Override
-    public ConnectionConsumer createDurableConnectionConsumer(Topic topic, String selector, String s1, ServerSessionPool serverSessionPool, int i) throws JMSException {
-        return safeGetConnection().createDurableConnectionConsumer(topic, selector, s1, serverSessionPool, i);
+    public ConnectionConsumer createDurableConnectionConsumer(Topic topic, String subscriptionName, String selector, ServerSessionPool serverSessionPool, int maxMessages) throws JMSException {
+        return wrapConnectionConsumer(safeGetConnection().createDurableConnectionConsumer(topic, subscriptionName, selector, serverSessionPool, maxMessages), topic);
     }
 
     @Override
     public ConnectionConsumer createSharedDurableConnectionConsumer(Topic topic, String subscriptionName, String selector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
-        return safeGetConnection().createSharedDurableConnectionConsumer(topic, subscriptionName, selector, sessionPool, maxMessages);
+        return wrapConnectionConsumer(safeGetConnection().createSharedDurableConnectionConsumer(topic, subscriptionName, selector, sessionPool, maxMessages), topic);
     }
 
     @Override
     public ConnectionConsumer createSharedConnectionConsumer(Topic topic, String subscriptionName, String selector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
-        return safeGetConnection().createSharedConnectionConsumer(topic, subscriptionName, selector, sessionPool, maxMessages);
+        return wrapConnectionConsumer(safeGetConnection().createSharedConnectionConsumer(topic, subscriptionName, selector, sessionPool, maxMessages), topic);
     }
 
     @Override
     public ConnectionConsumer createConnectionConsumer(Queue queue, String selector, ServerSessionPool serverSessionPool, int maxMessages) throws JMSException {
-        return safeGetConnection().createConnectionConsumer(queue, selector, serverSessionPool, maxMessages);
+        return wrapConnectionConsumer(safeGetConnection().createConnectionConsumer(queue, selector, serverSessionPool, maxMessages), queue);
+    }
+
+    private JmsPoolConnectionConsumer wrapConnectionConsumer(ConnectionConsumer consumer, Destination destination) {
+        return new JmsPoolConnectionConsumer(consumer, destination, (c) -> connectionConsumers.remove(c));
     }
 
     //----- Session factory methods ------------------------------------------//
@@ -352,6 +374,16 @@ public abstract class JmsPoolAbstractConnection implements TopicConnection, Queu
      * the resources that the Session had allocated for this PooledConnection.
      */
     private void cleanupManagedConnectionResources() {
+        connectionConsumers.removeIf(consumer -> {
+            try {
+                consumer.close();
+            } catch (JMSException ex) {
+                LOG.info("failed to close loaned ConnectionConsumer \"" + consumer + "\" on closing pooled connection: " + ex.getMessage());
+            }
+
+            return true;
+        });
+
         managedTempQueues.removeIf(tempQueue -> {
             try {
                 tempQueue.delete();
