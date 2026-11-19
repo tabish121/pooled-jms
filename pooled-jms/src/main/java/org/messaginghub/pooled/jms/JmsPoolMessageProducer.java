@@ -98,24 +98,18 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
             throw new UnsupportedOperationException("Using this method is not supported on producers created without an explicit Destination");
         }
 
-        sendMessage(destination, message, deliveryMode, priority, timeToLive, null);
+        doSendMessage(destination, message, deliveryMode, priority, timeToLive,
+                      deliveryDelay, disableMessageID, disableMessageTimestamp, null);
     }
 
     @Override
     public void send(Destination destination, Message message) throws JMSException {
-        send(destination, message, getDeliveryMode(), getPriority(), getTimeToLive());
+        sendMessage(destination, message, deliveryMode, priority, timeToLive, deliveryDelay, disableMessageID, disableMessageTimestamp);
     }
 
     @Override
     public void send(Destination destination, Message message, int deliveryMode, int priority, long timeToLive) throws JMSException {
-        checkClosed();
-        checkDestinationNotInvalid(destination);
-
-        if (!anonymousProducer) {
-            throw new UnsupportedOperationException("Using this method is not supported on producers created with an explicit Destination.");
-        }
-
-        sendMessage(destination, message, deliveryMode, priority, timeToLive, null);
+        sendMessage(destination, message, deliveryMode, priority, timeToLive, deliveryDelay, disableMessageID, disableMessageTimestamp);
     }
 
     //----- JMS 2.0 Send methods ---------------------------------------------//
@@ -137,16 +131,41 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
             throw new IllegalArgumentException("CompletionListener cannot be null");
         }
 
-        sendMessage(destination, message, deliveryMode, priority, timeToLive, listener);
+        doSendMessage(destination, message, deliveryMode, priority, timeToLive,
+                      deliveryDelay, disableMessageID, disableMessageTimestamp, listener);
     }
 
     @Override
     public void send(Destination destination, Message message, CompletionListener listener) throws JMSException {
-        send(destination, message, this.deliveryMode, this.priority, this.timeToLive, listener);
+        sendMessage(destination, message, deliveryMode, priority, timeToLive, deliveryDelay, disableMessageID, disableMessageTimestamp, listener);
     }
 
     @Override
     public void send(Destination destination, Message message, int deliveryMode, int priority, long timeToLive, CompletionListener listener) throws JMSException {
+        sendMessage(destination, message, deliveryMode, priority, timeToLive, deliveryDelay, disableMessageID, disableMessageTimestamp, listener);
+    }
+
+    //----- Internal and send implementations --------------------------------//
+
+    void sendMessage(Destination destination, Message message, int deliveryMode, int priority, long timeToLive,
+                     long deliveryDelay, boolean disableMessageID, boolean disableMessageTimestamp) throws JMSException {
+
+        checkClosed();
+        checkDestinationNotInvalid(destination);
+
+        if (!anonymousProducer) {
+            throw new UnsupportedOperationException(
+                    "Using this method is not supported on producers created with an explicit Destination.");
+        }
+
+        doSendMessage(destination, message, deliveryMode, priority, timeToLive,
+                      deliveryDelay, disableMessageID, disableMessageTimestamp, null);
+    }
+
+    void sendMessage(Destination destination, Message message, int deliveryMode, int priority, long timeToLive,
+                     long deliveryDelay, boolean disableMessageID, boolean disableMessageTimestamp,
+                     CompletionListener listener) throws JMSException {
+
         checkClosed();
         checkDestinationNotInvalid(destination);
 
@@ -158,30 +177,35 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
             throw new IllegalArgumentException("CompletionListener cannot be null");
         }
 
-        sendMessage(destination, message, deliveryMode, priority, timeToLive, listener);
+        doSendMessage(destination, message, deliveryMode, priority, timeToLive,
+                      deliveryDelay, disableMessageID, disableMessageTimestamp, listener);
     }
 
-    private void sendMessage(Destination destination, Message message, int deliveryMode, int priority, long timeToLive, CompletionListener listener) throws JMSException {
-        checkClosed();
-
+    private void doSendMessage(Destination destination, Message message,
+                               int deliveryMode, int priority, long timeToLive,
+                               long deliveryDelay, boolean disableMessageID, boolean disableMessageTimestamp,
+                               CompletionListener listener) throws JMSException {
         // Only one thread can use the producer at a time to allow for dynamic configuration
-        // changes to match what's been configured here.
+        // changes to match what's been configured here. It is tempting to optimize out the lock
+        // if not actually applying changes here but another thread can call into this method
+        // with different configuration which would mutate the producer while a send is in progress
+        // which can cause the other send to not honor what was passed.
         synchronized (messageProducer) {
-            long oldDelayValue = 0;
-            boolean oldDisableMessageId = false;
-            boolean oldDisableTimestamp = false;
+            long oldDeliveryDelay = 0;
+            boolean oldDisableMessageID = false;
+            boolean oldDisableMessageTimestamp = false;
 
             try {
                 if (deliveryDelay != 0 && messageProducer.isDelayedDeliverySupported()) {
-                    oldDelayValue = messageProducer.getDeliveryDelay();
+                    oldDeliveryDelay = messageProducer.getDeliveryDelay();
                     messageProducer.setDeliveryDelay(deliveryDelay);
                 }
                 if (disableMessageID) {
-                    oldDisableMessageId = messageProducer.getDisableMessageID();
+                    oldDisableMessageID = messageProducer.getDisableMessageID();
                     messageProducer.setDisableMessageID(disableMessageID);
                 }
                 if (disableMessageTimestamp) {
-                    oldDisableTimestamp = messageProducer.getDisableMessageTimestamp();
+                    oldDisableMessageTimestamp = messageProducer.getDisableMessageTimestamp();
                     messageProducer.setDisableMessageTimestamp(disableMessageTimestamp);
                 }
             } catch (IllegalStateException jmsISE) {
@@ -205,6 +229,8 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
             //
             // In all other cases we create an anonymous producer so we call the send with
             // destination parameter version.
+            boolean sendSuccess = false;
+
             try {
                 if (!messageProducer.isAnonymousProducer()) {
                     if (listener == null) {
@@ -219,6 +245,8 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
                         messageProducer.send(destination, message, deliveryMode, priority, timeToLive, listener);
                     }
                 }
+
+                sendSuccess = true;
             } catch (IllegalStateException jmsISE) {
                 // The JMS MessageProducer that backs this wrapper has indicated that it is
                 // likely closed either individually or by the full connection having gone
@@ -234,24 +262,50 @@ public class JmsPoolMessageProducer implements MessageProducer, AutoCloseable {
                 throw jmsISE;
             } finally {
                 if (!isClosed()) {
-                    try {
-                        if (deliveryDelay != 0 && messageProducer.isDelayedDeliverySupported()) {
-                            messageProducer.setDeliveryDelay(oldDelayValue);
+                    boolean forceClose = false;
+                    JMSException jmsEx = null;
+
+                    if (messageProducer.isDelayedDeliverySupported() && deliveryDelay != 0) {
+                        try {
+                            messageProducer.setDeliveryDelay(oldDeliveryDelay);
+                        } catch (JMSException ex) {
+                            forceClose = forceClose || ex instanceof IllegalStateException;
+                            if (jmsEx == null) {
+                                jmsEx = ex;
+                            }
                         }
-                        if (disableMessageID) {
-                            messageProducer.setDisableMessageID(oldDisableMessageId);
+                    }
+                    if (disableMessageID) {
+                        try {
+                            messageProducer.setDisableMessageID(oldDisableMessageID);
+                        } catch (JMSException ex) {
+                            forceClose = forceClose || ex instanceof IllegalStateException;
+                            if (jmsEx == null) {
+                                jmsEx = ex;
+                            }
                         }
-                        if (disableMessageTimestamp) {
-                            messageProducer.setDisableMessageTimestamp(oldDisableTimestamp);
+                    }
+                    if (disableMessageTimestamp) {
+                        try {
+                            messageProducer.setDisableMessageTimestamp(oldDisableMessageTimestamp);
+                        } catch (JMSException ex) {
+                            forceClose = forceClose || ex instanceof IllegalStateException;
+                            if (jmsEx == null) {
+                                jmsEx = ex;
+                            }
                         }
-                    } catch (IllegalStateException jmsISE) {
+                    }
+
+                    if (forceClose) {
                         try {
                             doClose(true);
                         } catch (Exception ex) {
                             // Ignore and throw original failure cause
                         }
+                    }
 
-                        throw jmsISE;
+                    if (sendSuccess && jmsEx != null) {
+                        throw jmsEx;
                     }
                 }
             }

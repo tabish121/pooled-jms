@@ -196,7 +196,7 @@ public class MockJMSMessageProducer implements MessageProducer, AutoCloseable {
             throw new UnsupportedOperationException("Using this method is not supported on producers created with an explicit Destination.");
         }
 
-        session.send(this, destination, message, deliveryMode, priority, timeToLive, disableMessageId, disableTimestamp, deliveryMode, null);
+        session.send(this, destination, message, deliveryMode, priority, timeToLive, disableMessageId, disableTimestamp, deliveryDelay, null);
     }
 
     @Override

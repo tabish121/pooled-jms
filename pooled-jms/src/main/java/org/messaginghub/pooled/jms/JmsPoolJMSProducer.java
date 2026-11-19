@@ -63,6 +63,9 @@ public class JmsPoolJMSProducer implements JMSProducer {
     private int deliveryMode = DeliveryMode.PERSISTENT;
     private int priority = Message.DEFAULT_PRIORITY;
     private long timeToLive = Message.DEFAULT_TIME_TO_LIVE;
+    private long deliveryDelay;
+    private boolean disableMessageID;
+    private boolean disableMessageTimestamp;
 
     // Message Properties
     private final Map<String, Object> messageProperties = new HashMap<String, Object>();
@@ -194,9 +197,11 @@ public class JmsPoolJMSProducer implements JMSProducer {
         }
 
         if (completionListener != null) {
-            producer.send(destination, message, deliveryMode, priority, timeToLive, completionListener);
+            producer.sendMessage(destination, message, deliveryMode, priority, timeToLive,
+                                 deliveryDelay, disableMessageID, disableMessageTimestamp, completionListener);
         } else {
-            producer.send(destination, message, deliveryMode, priority, timeToLive);
+            producer.sendMessage(destination, message, deliveryMode, priority, timeToLive,
+                                 deliveryDelay, disableMessageID, disableMessageTimestamp);
         }
     }
 
@@ -406,12 +411,13 @@ public class JmsPoolJMSProducer implements JMSProducer {
 
     @Override
     public long getDeliveryDelay() {
-        return 0;
+        return deliveryDelay;
     }
 
     @Override
     public JMSProducer setDeliveryDelay(long deliveryDelay) {
-        throw new JMSRuntimeException("Pooled JMSProducer cannot use delivery delay");
+        this.deliveryDelay = deliveryDelay;
+        return this;
     }
 
     @Override
@@ -433,22 +439,24 @@ public class JmsPoolJMSProducer implements JMSProducer {
 
     @Override
     public boolean getDisableMessageID() {
-        return false;
+        return disableMessageID;
     }
 
     @Override
-    public JMSProducer setDisableMessageID(boolean disableMessageId) {
-        throw new JMSRuntimeException("Pooled JMSProducer cannot disable message IDs");
+    public JMSProducer setDisableMessageID(boolean disableMessageID) {
+        this.disableMessageID = disableMessageID;
+        return this;
     }
 
     @Override
     public boolean getDisableMessageTimestamp() {
-        return false;
+        return disableMessageTimestamp;
     }
 
     @Override
-    public JMSProducer setDisableMessageTimestamp(boolean disableTimestamp) {
-        throw new JMSRuntimeException("Pooled JMSProducer cannot disable message time stamps");
+    public JMSProducer setDisableMessageTimestamp(boolean disableMessageTimestamp) {
+        this.disableMessageTimestamp = disableMessageTimestamp;
+        return this;
     }
 
     @Override

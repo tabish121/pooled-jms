@@ -17,6 +17,7 @@
 package org.messaginghub.pooled.jms;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -38,6 +39,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,6 +48,7 @@ import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.Timeout;
 import org.messaginghub.pooled.jms.mock.MockJMSConnection;
 import org.messaginghub.pooled.jms.mock.MockJMSDefaultConnectionListener;
+import org.messaginghub.pooled.jms.mock.MockJMSDefaultSessionListener;
 import org.messaginghub.pooled.jms.mock.MockJMSMessageProducer;
 import org.messaginghub.pooled.jms.mock.MockJMSObjectMessage;
 import org.messaginghub.pooled.jms.mock.MockJMSSession;
@@ -888,49 +891,45 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
     }
 
     @Test
-    public void testDeliveryDelay() {
-        JMSProducer producer = context.createProducer();
+    public void testDeliveryDelay() throws JMSException {
+        final JMSProducer producer = context.createProducer();
 
         assertEquals(0, producer.getDeliveryDelay());
-        try {
-            producer.setDeliveryDelay(2000);
-            fail("Pool JMSProducer can't modify shared session delay mode.");
-        } catch (JMSRuntimeException jmsre) {
-        }
+        producer.setDeliveryDelay(1);
+        assertEquals(1, producer.getDeliveryDelay());
+
+        context.close();
+
+        producer.setDeliveryDelay(10);
+        assertDoesNotThrow(() -> producer.getDeliveryDelay());
     }
 
     @Test
-    public void testDisableMessageID() {
-        JMSProducer producer = context.createProducer();
+    public void testDisableMessageID() throws JMSException {
+        final JMSProducer producer = context.createProducer();
 
-        assertEquals(false, producer.getDisableMessageID());
-        try {
-            producer.setDisableMessageID(true);
-            fail("Pool JMSProducer can't modify shared session disable mode.");
-        } catch (JMSRuntimeException jmsre) {
-        }
-        try {
-            producer.setDisableMessageID(false);
-            fail("Pool JMSProducer can't modify shared session disable mode.");
-        } catch (JMSRuntimeException jmsre) {
-        }
+        assertFalse(producer.getDisableMessageID());
+        producer.setDisableMessageID(true);
+        assertTrue(producer.getDisableMessageID());
+
+        context.close();
+
+        producer.setDisableMessageID(false);
+        assertFalse(producer.getDisableMessageID());
     }
 
     @Test
-    public void testMessageDisableTimestamp() {
-        JMSProducer producer = context.createProducer();
+    public void testDisableMessageTimestamp() throws JMSException {
+        final JMSProducer producer = context.createProducer();
 
-        assertEquals(false, producer.getDisableMessageTimestamp());
-        try {
-            producer.setDisableMessageTimestamp(true);
-            fail("Pool JMSProducer can't modify shared session disable mode.");
-        } catch (JMSRuntimeException jmsre) {
-        }
-        try {
-            producer.setDisableMessageTimestamp(false);
-            fail("Pool JMSProducer can't modify shared session disable mode.");
-        } catch (JMSRuntimeException jmsre) {
-        }
+        assertFalse(producer.getDisableMessageTimestamp());
+        producer.setDisableMessageTimestamp(true);
+        assertTrue(producer.getDisableMessageTimestamp());
+
+        context.close();
+
+        producer.setDisableMessageTimestamp(false);
+        assertFalse(producer.getDisableMessageTimestamp());
     }
 
     @Test
@@ -1520,6 +1519,115 @@ public class JmsPoolJMSProducerTest extends JmsPoolTestSupport {
         assertThrows(IllegalStateRuntimeException.class, () -> producer.send(queue, message));
 
         assertEquals(1, messageCount.get());
+    }
+
+    @Test
+    public void testSendWithDeliveryDelay() throws JMSException {
+        final JmsPoolJMSProducer producer = (JmsPoolJMSProducer) context.createProducer();
+        final MockJMSSession session = (MockJMSSession) context.getSession().getProviderSession();
+        final AtomicLong deliveryDelaySent = new AtomicLong();
+
+        session.addSessionListener(new MockJMSDefaultSessionListener() {
+
+            @Override
+            public void onProducerSend(MockJMSSession session, MockJMSMessageProducer producer, Destination destination, Message message,
+                                       int deliveryMode, int priority, long timeToLive, boolean disableMessageId,
+                                       boolean disableTimestamp, long deliveryDelay, CompletionListener completionListener) throws JMSException {
+
+                deliveryDelaySent.set(deliveryDelay);
+            }
+        });
+
+        producer.setDeliveryDelay(222);
+        producer.send(context.createTemporaryQueue(), "test");
+
+        assertEquals(222, deliveryDelaySent.get());
+
+        // Check that the producer has its state restored after send
+        MockJMSMessageProducer mockProducer = (MockJMSMessageProducer) producer.getProviderMessageProducer();
+        assertEquals(0, mockProducer.getDeliveryDelay());
+
+        // Another producer should also send with the defaults
+        JMSProducer other = context.createProducer();
+        other.send(context.createTemporaryQueue(), "test");
+
+        assertEquals(0, deliveryDelaySent.get());
+    }
+
+    @Test
+    public void testSendWithDisableMessageID() throws JMSException {
+        final JmsPoolJMSProducer producer = (JmsPoolJMSProducer) context.createProducer();
+        final MockJMSSession session = (MockJMSSession) context.getSession().getProviderSession();
+        final AtomicBoolean disableMessageIdSent = new AtomicBoolean();
+
+        session.addSessionListener(new MockJMSDefaultSessionListener() {
+
+            @Override
+            public void onProducerSend(MockJMSSession session, MockJMSMessageProducer producer, Destination destination, Message message,
+                                       int deliveryMode, int priority, long timeToLive, boolean disableMessageId,
+                                       boolean disableTimestamp, long deliveryDelay, CompletionListener completionListener) throws JMSException {
+
+                disableMessageIdSent.set(disableMessageId);
+            }
+        });
+
+        producer.setDisableMessageID(true);
+        producer.send(context.createTemporaryQueue(), "test");
+
+        assertTrue(disableMessageIdSent.get());
+
+        // Check that the producer has its state restored after send
+        MockJMSMessageProducer mockProducer = (MockJMSMessageProducer) producer.getProviderMessageProducer();
+        assertFalse(mockProducer.getDisableMessageID());
+
+        producer.setDisableMessageID(false);
+        producer.send(context.createTemporaryQueue(), "test");
+
+        assertFalse(disableMessageIdSent.get());
+
+        // Another producer should also send with the defaults
+        JMSProducer other = context.createProducer();
+        other.send(context.createTemporaryQueue(), "test");
+
+        assertFalse(disableMessageIdSent.get());
+    }
+
+    @Test
+    public void testSendWithDisableMessageTimestamp() throws JMSException {
+        final JmsPoolJMSProducer producer = (JmsPoolJMSProducer) context.createProducer();
+        final MockJMSSession session = (MockJMSSession) context.getSession().getProviderSession();
+        final AtomicBoolean disableMessageTimestampSent = new AtomicBoolean();
+
+        session.addSessionListener(new MockJMSDefaultSessionListener() {
+
+            @Override
+            public void onProducerSend(MockJMSSession session, MockJMSMessageProducer producer, Destination destination, Message message,
+                                       int deliveryMode, int priority, long timeToLive, boolean disableMessageId,
+                                       boolean disableTimestamp, long deliveryDelay, CompletionListener completionListener) throws JMSException {
+
+                disableMessageTimestampSent.set(disableTimestamp);
+            }
+        });
+
+        producer.setDisableMessageTimestamp(true);
+        producer.send(context.createTemporaryQueue(), "test");
+
+        assertTrue(disableMessageTimestampSent.get());
+
+        // Check that the producer has its state restored after send
+        MockJMSMessageProducer mockProducer = (MockJMSMessageProducer) producer.getProviderMessageProducer();
+        assertFalse(mockProducer.getDisableMessageTimestamp());
+
+        producer.setDisableMessageTimestamp(false);
+        producer.send(context.createTemporaryQueue(), "test");
+
+        assertFalse(disableMessageTimestampSent.get());
+
+        // Another producer should also send with the defaults
+        JMSProducer other = context.createProducer();
+        other.send(context.createTemporaryQueue(), "test");
+
+        assertFalse(disableMessageTimestampSent.get());
     }
 
     //----- Internal Support -------------------------------------------------//

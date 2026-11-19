@@ -395,6 +395,63 @@ public class JmsPoolWrappedProducersTest extends JmsPoolTestSupport {
     }
 
     @Test
+    public void testRemoteCloseAfterSendOfPooledAnonymousMessageProducerWithMultipleOptionsCanRecover() throws Exception {
+        final AtomicInteger produersCreated = new AtomicInteger();
+        final AtomicInteger producersClosed = new AtomicInteger();
+
+        JmsPoolConnection connection = (JmsPoolConnection) cf.createQueueConnection();
+        MockJMSConnection mockConnection = (MockJMSConnection) connection.getProviderConnection();
+        mockConnection.addConnectionListener(new MockJMSDefaultConnectionListener() {
+
+            @Override
+            public void onCreateMessageProducer(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
+                produersCreated.incrementAndGet();
+            }
+
+            @Override
+            public void onMessageSend(MockJMSSession session, MockJMSMessageProducer producer, Message message) throws JMSException {
+                if (produersCreated.get() == 1) {
+                    producer.close();
+                }
+            }
+
+            @Override
+            public void onCloseMessageProducer(MockJMSSession session, MockJMSMessageProducer producer) throws JMSException {
+                producersClosed.incrementAndGet();
+            }
+        });
+
+        Session session = connection.createSession();
+        Queue queue = session.createTemporaryQueue();
+        MessageProducer producer1 = session.createProducer(queue);
+
+        // The producer is closed while the message is sent so every option that was applied
+        // before the send fails to be restored afterwards. All of those failures must be
+        // tracked and not just the last one seen or the wrapper would be left attached to a
+        // dead provider producer.
+        producer1.setDeliveryDelay(5000);
+        producer1.setDisableMessageID(true);
+
+        assertEquals(1, produersCreated.get());
+
+        try {
+            producer1.send(session.createTextMessage("test"));
+            fail("Should have failed on send with IllegalStateException indicating the producer is closed.");
+        } catch (IllegalStateException jmsISE) {
+            assertEquals(1, producersClosed.get());
+        }
+
+        MessageProducer producer2 = session.createProducer(queue);
+
+        assertEquals(2, produersCreated.get());
+
+        producer1.close();
+        producer2.close();
+
+        assertEquals(1, producersClosed.get());
+    }
+
+    @Test
     public void testRemoteCloseAfterSendOfPooledAnonymousTopicPublisherCanRecover() throws Exception {
         final AtomicInteger produersCreated = new AtomicInteger();
         final AtomicInteger producersClosed = new AtomicInteger();
